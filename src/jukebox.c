@@ -1,6 +1,6 @@
 /*
  * OpenTyrian: A modern cross-platform port of Tyrian
- * Copyright (C) The OpenTyrian Development Team
+ * Copyright (C) 2007-2009  The OpenTyrian Development Team
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -34,7 +34,7 @@
 
 #include <stdio.h>
 
-void jukebox(void)  // FKA Setup.jukeboxGo
+void jukebox( void )
 {
 	bool trigger_quit = false,  // true when user wants to quit
 	     quitting = false;
@@ -83,13 +83,15 @@ void jukebox(void)  // FKA Setup.jukeboxGo
 				play_song(mt_rand() % MUSIC_NUM);
 		}
 
-		setFrameCount(1);
+		setdelay(1);
 
 		SDL_FillRect(VGAScreenSeg, NULL, 0);
 
-		KeyboardInput keyboardInput;
+		// starlib input needs to be rewritten
+		JE_starlib_main();
 
-		bool gotKeyboardInput = starLibMain(&keyboardInput);
+		push_joysticks_as_keyboard();
+		service_SDL_events(true);
 
 		if (!hide_text)
 		{
@@ -102,9 +104,9 @@ void jukebox(void)  // FKA Setup.jukeboxGo
 			
 			const int x = VGAScreen->w / 2;
 			
-			drawFontHvAligned(VGAScreen, x, 170, "Press ESC to quit the jukebox.",           FONT_SMALL, ALIGN_CENTER, 1, 0);
-			drawFontHvAligned(VGAScreen, x, 180, "Arrow keys change the song being played.", FONT_SMALL, ALIGN_CENTER, 1, 0);
-			drawFontHvAligned(VGAScreen, x, 190, buffer,                                     FONT_SMALL, ALIGN_CENTER, 1, 4);
+			draw_font_hv(VGAScreen, x, 170, "Press ESC to quit the jukebox.",           small_font, centered, 1, 0);
+			draw_font_hv(VGAScreen, x, 180, "Arrow keys change the song being played.", small_font, centered, 1, 0);
+			draw_font_hv(VGAScreen, x, 190, buffer,                                     small_font, centered, 1, 4);
 		}
 
 		if (palette_fade_steps > 0)
@@ -112,77 +114,65 @@ void jukebox(void)  // FKA Setup.jukeboxGo
 		
 		JE_showVGA();
 
-		waitUntilElapsed();
+		wait_delay();
 
-		// Quit on mouse click.
-		if (mouseGetInput(INPUT_NO_MOTION, NULL))
+		// quit on mouse click
+		Uint16 x, y;
+		if (JE_mousePosition(&x, &y) > 0)
 			trigger_quit = true;
 
-		if (gotKeyboardInput)
+		if (newkey)
 		{
-			switch (KEY_COMBO(keyboardInput.mod, keyboardInput.scancode))
+			switch (lastkey_sym)
 			{
-			case SDL_SCANCODE_ESCAPE:
-			case SDL_SCANCODE_Q:
-			case KEY_COMBO(KMOD_SHIFT, SDL_SCANCODE_Q):
+			case SDLK_ESCAPE: // quit jukebox
+			case SDLK_q:
 				trigger_quit = true;
 				break;
 
-			case SDL_SCANCODE_SPACE:
+			case SDLK_SPACE:
 				hide_text = !hide_text;
 				break;
 
-			case SDL_SCANCODE_F:
-			case KEY_COMBO(KMOD_SHIFT, SDL_SCANCODE_F):
+			case SDLK_f:
 				fading_song = !fading_song;
 				break;
-			case SDL_SCANCODE_N:
-			case KEY_COMBO(KMOD_SHIFT, SDL_SCANCODE_N):
+			case SDLK_n:
 				fade_looped_songs = !fade_looped_songs;
 				break;
-			case SDL_SCANCODE_V:
-			case KEY_COMBO(KMOD_SHIFT, SDL_SCANCODE_V):
-				// Not implemented.
-				break;
-			case SDL_SCANCODE_T:
-			case KEY_COMBO(KMOD_SHIFT, SDL_SCANCODE_T):
-				// Not implemented.
-				break;
 
-			case SDL_SCANCODE_SLASH:
+			case SDLK_SLASH: // switch to sfx mode
 				fx = !fx;
 				break;
-			case SDL_SCANCODE_COMMA:
+			case SDLK_COMMA:
 				if (fx && --fx_num < 0)
-					fx_num = SOUND_COUNT - 1;
+					fx_num = SAMPLE_COUNT - 1;
 				break;
-			case SDL_SCANCODE_PERIOD:
-				if (fx && ++fx_num >= SOUND_COUNT)
+			case SDLK_PERIOD:
+				if (fx && ++fx_num >= SAMPLE_COUNT)
 					fx_num = 0;
 				break;
-			case SDL_SCANCODE_SEMICOLON:
+			case SDLK_SEMICOLON:
 				if (fx)
 					JE_playSampleNum(fx_num + 1);
 				break;
 
-			case SDL_SCANCODE_LEFT:
-			case SDL_SCANCODE_UP:
+			case SDLK_LEFT:
+			case SDLK_UP:
 				play_song((song_playing > 0 ? song_playing : MUSIC_NUM) - 1);
 				stopped = false;
 				break;
-			case SDL_SCANCODE_RETURN:
-			case SDL_SCANCODE_RIGHT:
-			case SDL_SCANCODE_DOWN:
+			case SDLK_RETURN:
+			case SDLK_RIGHT:
+			case SDLK_DOWN:
 				play_song((song_playing + 1) % MUSIC_NUM);
 				stopped = false;
 				break;
-			case SDL_SCANCODE_S:
-			case KEY_COMBO(KMOD_SHIFT, SDL_SCANCODE_S):
+			case SDLK_s: // stop song
 				stop_song();
 				stopped = true;
 				break;
-			case SDL_SCANCODE_R:
-			case KEY_COMBO(KMOD_SHIFT, SDL_SCANCODE_R):
+			case SDLK_r: // restart song
 				restart_song();
 				stopped = false;
 				break;
@@ -210,3 +200,4 @@ void jukebox(void)  // FKA Setup.jukeboxGo
 
 	set_volume(tyrMusicVolume, fxVolume);
 }
+

@@ -1,3 +1,9 @@
+This is a fork (and port to Playstation 3) taken from the SDL1 branch of the following repository:
+Credits to the respective project and team behind it:
+
+SDL1 Branch = https://github.com/opentyrian/opentyrian/tree/sdl1
+MAIN = https://github.com/opentyrian/opentyrian
+
 OpenTyrian
 ================================================================================
 
@@ -13,33 +19,33 @@ multiplayer.
 == Additional Necessary Files ==================================================
 
 Tyrian 2.1 data files which have been released as freeware:
-  https://camanis.net/tyrian/tyrian21.zip
+  http://camanis.net/tyrian/tyrian21.zip
+  
+FOR THIS PS3 PORT:
+	Extract the zip files on the "gamefiles" folder, and then build.
 
-== Keyboard Controls ===========================================================
+== ABOUT THIS PS3 PORT =========================================================
 
-alt-enter      -- toggle full-screen
+Hi, I am Mario! (elmariolo).
 
-arrow keys     -- ship movement
-space          -- fire weapons
-enter          -- toggle rear weapon mode
-ctrl/alt       -- fire left/right sidekick
+This is my first port of a game in my life.
 
-== Network Multiplayer =========================================================
+I've loved this game since I was a kid in 1996. 
+My parents bought me my first PC, an Acer Aspire, and it came with a demo of this game.
+From that moment on, I haven't been able to forget those games and that time. 
+More ports from that era are coming soon...
 
-Currently OpenTyrian does not have an arena; as such, networked games must be
-initiated manually via the command line simultaneously by both players.
+== Build the game package ======================================================
 
-syntax:
-  opentyrian --net HOSTNAME --net-player-name NAME --net-player-number NUMBER
+To build this port, please get a linux PC and install the Toolchain and SDK for PS3
+You can check here to build the toolchain: https://github.com/ps3dev/ps3toolchain
 
-where HOSTNAME is the IP address of your opponent, NUMBER is either 1 or 2
-depending on which ship you intend to pilot, and NAME is your alias
+Then clone this repository, copy the necessary files, and make as usual with: make clean & make
 
-OpenTyrian uses UDP port 1333 for multiplayer, but in most cases players will
-not need to open any ports because OpenTyrian makes use of UDP hole punching.
+If everything goes well, you will have the package ready to install on PS3 at the root folder.
 
 == Links =======================================================================
 
 project: https://github.com/opentyrian/opentyrian
-irc:     ircs://irc.oftc.net/#opentyrian
-forums:  https://tyrian2k.proboards.com/board/5
+irc:     irc://irc.freenode.net/#tyrian
+forums:  http://tyrian2k.proboards.com/index.cgi?board=opentyriangeneral

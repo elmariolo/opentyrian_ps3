@@ -1,160 +1,56 @@
-# BUILD SETTINGS ###############################################################
+TARGET		:= opentyrian
+TITLE_ID	:= TYRIAN001
+CONTENT_ID	:= HG0000-$(TITLE_ID)_00-0000111122223333
+CC      := ppu-gcc
 
-ifneq ($(filter Msys Cygwin, $(shell uname -o)), )
-    PLATFORM := WIN32
-    TYRIAN_DIR = C:\\TYRIAN
-else
-    PLATFORM := UNIX
-    TYRIAN_DIR = $(gamesdir)/tyrian
-endif
+PS3DEV:=/usr/local/ps3dev
+PS3PORTLIBS:=$(PS3DEV)/portlibs/ppu
+PATH:=$(PATH):$(PS3DEV)/bin:$(PS3DEV)/ppu/bin
 
-WITH_NETWORK := true
+PKG_DIR		:= "package"
+DATA_SOURCE	:= "gamefiles"
+USR_DIR		:= "$(PKG_DIR)/USRDIR"
+EBOOT_DEST	:= "$(USR_DIR)/EBOOT.BIN"
 
-################################################################################
+INCLUDES	:= -I$(PSL1GHT)/ppu/include -I$(PS3PORTLIBS)/include -I$(PS3PORTLIBS)/include/SDL
 
-# see https://www.gnu.org/prep/standards/html_node/Makefile-Conventions.html
+CFLAGS		:= $(INCLUDES) -std=gnu99 \
+				-DSDLK_FIRST=0 -DSDLK_LAST=323 -DLSB_FIRST=0 -DTYRIAN_DIR=\"/dev_hdd0/game/TYRIAN001/USRDIR/\" 
 
-SHELL = /bin/sh
+CFLAGS   += -Dippu -D__PS3__ -D_THREAD_SAFE
 
-CC ?= gcc
-INSTALL ?= install
-PKG_CONFIG ?= pkg-config
+LIBS    := -L$(PS3PORTLIBS)/lib -L$(PSL1GHT)/ppu/lib \
+           -lSDL_mixer -lSDL \
+           -lio -lrt -lsysutil -lgcm_sys -lrsx -laudio -llv2 -lz -lm
+		   
+LDFLAGS += -Wl,--stack=0x100000
+			   
+SOURCES		:= $(wildcard src/*.c)
+OBJS		:= $(SOURCES:.c=.o)
 
-VCS_IDREV ?= (git describe --tags || git rev-parse --short HEAD)
+include $(PSL1GHT)/ppu_rules
 
-INSTALL_PROGRAM ?= $(INSTALL)
-INSTALL_DATA ?= $(INSTALL) -m 644
+all: $(TARGET).self
 
-prefix ?= /usr/local
-exec_prefix ?= $(prefix)
-
-bindir ?= $(exec_prefix)/bin
-datarootdir ?= $(prefix)/share
-datadir ?= $(datarootdir)
-docdir ?= $(datarootdir)/doc/opentyrian
-mandir ?= $(datarootdir)/man
-man6dir ?= $(mandir)/man6
-man6ext ?= .6
-desktopdir ?= $(datarootdir)/applications
-icondir ?= $(datarootdir)/icons
-
-# see https://www.pathname.com/fhs/pub/fhs-2.3.html
-
-gamesdir ?= $(datadir)/games
-
-###
-
-TARGET := opentyrian
-
-SRCS := $(wildcard src/*.c)
-OBJS := $(SRCS:src/%.c=obj/%.o)
-DEPS := $(SRCS:src/%.c=obj/%.d)
-
-###
-
-ifeq ($(WITH_NETWORK), true)
-    EXTRA_CPPFLAGS += -DWITH_NETWORK
-endif
-
-OPENTYRIAN_VERSION := $(shell $(VCS_IDREV) 2>/dev/null && \
-                              touch src/opentyrian_version.h)
-ifneq ($(OPENTYRIAN_VERSION), )
-    EXTRA_CPPFLAGS += -DOPENTYRIAN_VERSION='"$(OPENTYRIAN_VERSION)"'
-endif
-
-CPPFLAGS ?= -MMD
-CPPFLAGS += -DNDEBUG
-CFLAGS ?= -pedantic \
-          -Wall \
-          -Wextra \
-          -Wno-format-truncation \
-          -Wno-missing-field-initializers \
-          -O2
-LDFLAGS ?=
-LDLIBS ?=
-
-ifeq ($(WITH_NETWORK), true)
-    SDL_CPPFLAGS := $(shell $(PKG_CONFIG) sdl2 SDL2_net --cflags)
-    SDL_LDFLAGS := $(shell $(PKG_CONFIG) sdl2 SDL2_net --libs-only-L --libs-only-other)
-    SDL_LDLIBS := $(shell $(PKG_CONFIG) sdl2 SDL2_net --libs-only-l)
-else
-    SDL_CPPFLAGS := $(shell $(PKG_CONFIG) sdl2 --cflags)
-    SDL_LDFLAGS := $(shell $(PKG_CONFIG) sdl2 --libs-only-L --libs-only-other)
-    SDL_LDLIBS := $(shell $(PKG_CONFIG) sdl2 --libs-only-l)
-endif
-
-ALL_CPPFLAGS = -DTARGET_$(PLATFORM) \
-               -DTYRIAN_DIR='"$(TYRIAN_DIR)"' \
-               $(EXTRA_CPPFLAGS) \
-               $(SDL_CPPFLAGS) \
-               $(CPPFLAGS)
-ALL_CFLAGS = -std=iso9899:1999 \
-             $(CFLAGS)
-ALL_LDFLAGS = $(SDL_LDFLAGS) \
-              $(LDFLAGS)
-ALL_LDLIBS = -lm \
-             $(SDL_LDLIBS) \
-             $(LDLIBS)
-
-###
-
-.PHONY : all
-all : $(TARGET)
-
-.PHONY : debug
-debug : CPPFLAGS += -UNDEBUG
-debug : CFLAGS += -Werror
-debug : CFLAGS += -O0
-debug : CFLAGS += -g3
-debug : all
-
-.PHONY : installdirs
-installdirs :
-	mkdir -p $(DESTDIR)$(bindir)
-	mkdir -p $(DESTDIR)$(docdir)
-	mkdir -p $(DESTDIR)$(man6dir)
-	mkdir -p $(DESTDIR)$(desktopdir)
-	mkdir -p $(DESTDIR)$(icondir)/hicolor/22x22/apps
-	mkdir -p $(DESTDIR)$(icondir)/hicolor/24x24/apps
-	mkdir -p $(DESTDIR)$(icondir)/hicolor/32x32/apps
-	mkdir -p $(DESTDIR)$(icondir)/hicolor/48x48/apps
-	mkdir -p $(DESTDIR)$(icondir)/hicolor/128x128/apps
-
-.PHONY : install
-install : $(TARGET) installdirs
-	$(INSTALL_PROGRAM) $(TARGET) $(DESTDIR)$(bindir)/
-	$(INSTALL_DATA) NEWS README $(DESTDIR)$(docdir)/
-	$(INSTALL_DATA) linux/man/opentyrian.6 $(DESTDIR)$(man6dir)/opentyrian$(man6ext)
-	$(INSTALL_DATA) linux/opentyrian.desktop $(DESTDIR)$(desktopdir)/
-	$(INSTALL_DATA) linux/icons/tyrian-22.png $(DESTDIR)$(icondir)/hicolor/22x22/apps/opentyrian.png
-	$(INSTALL_DATA) linux/icons/tyrian-24.png $(DESTDIR)$(icondir)/hicolor/24x24/apps/opentyrian.png
-	$(INSTALL_DATA) linux/icons/tyrian-32.png $(DESTDIR)$(icondir)/hicolor/32x32/apps/opentyrian.png
-	$(INSTALL_DATA) linux/icons/tyrian-48.png $(DESTDIR)$(icondir)/hicolor/48x48/apps/opentyrian.png
-	$(INSTALL_DATA) linux/icons/tyrian-128.png $(DESTDIR)$(icondir)/hicolor/128x128/apps/opentyrian.png
-
-.PHONY : uninstall
-uninstall :
-	rm -f $(DESTDIR)$(bindir)/$(TARGET)
-	rm -f $(DESTDIR)$(docdir)/NEWS $(DESTDIR)$(docdir)/README
-	rm -f $(DESTDIR)$(man6dir)/opentyrian$(man6ext)
-	rm -f $(DESTDIR)$(desktopdir)/opentyrian.desktop
-	rm -f $(DESTDIR)$(icondir)/hicolor/22x22/apps/opentyrian.png
-	rm -f $(DESTDIR)$(icondir)/hicolor/24x24/apps/opentyrian.png
-	rm -f $(DESTDIR)$(icondir)/hicolor/32x32/apps/opentyrian.png
-	rm -f $(DESTDIR)$(icondir)/hicolor/48x48/apps/opentyrian.png
-	rm -f $(DESTDIR)$(icondir)/hicolor/128x128/apps/opentyrian.png
-
-.PHONY : clean
-clean :
-	rm -f $(OBJS)
-	rm -f $(DEPS)
-	rm -f $(TARGET)
-
-$(TARGET) : $(OBJS)
-	$(CC) $(ALL_CFLAGS) $(ALL_LDFLAGS) -o $@ $^ $(ALL_LDLIBS)
-
--include $(DEPS)
-
-obj/%.o : src/%.c
-	@mkdir -p "$(dir $@)"
-	$(CC) $(ALL_CPPFLAGS) $(ALL_CFLAGS) -c -o $@ $<
+$(TARGET).elf: $(OBJS)
+	$(CC) $(OBJS) $(LIBS) -o $@
+	rm -rf $(PKG_DIR)
+	mkdir -p $(USR_DIR)
+	cp "PARAM.SFO" "$(PKG_DIR)/PARAM.SFO"
+	cp "PIC1.PNG" "$(PKG_DIR)/PIC1.PNG"
+	cp "ICON0.PNG" "$(PKG_DIR)/ICON0.PNG"
+	cp -r "$(DATA_SOURCE)"/* "$(USR_DIR)/"
+	bash fixnames.sh
+	
+$(TARGET).self: $(TARGET).elf
+	ppu-strip $< -o $<.strip
+	sprxlinker $<.strip
+	make_self $<.strip $@
+	fself -n $<.strip EBOOT.BIN $(CONTENT_ID)
+	cp EBOOT.BIN "$(EBOOT_DEST)"
+	pkg.py --contentid $(CONTENT_ID) "$(PKG_DIR)/" opentyrian_ps3.pkg
+	
+clean:
+	rm -rf "$PKG_DIR"
+	mkdir -p "$USR_DIR"
+	rm -f $(OBJS) $(TARGET).elf $(TARGET).self

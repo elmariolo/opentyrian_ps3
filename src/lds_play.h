@@ -1,6 +1,6 @@
 /* 
  * OpenTyrian: A modern cross-platform port of Tyrian
- * Copyright (C) The OpenTyrian Development Team
+ * Copyright (C) 2007-2009  The OpenTyrian Development Team
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -25,11 +25,12 @@
 
 extern bool playing, songlooped;
 
-int lds_update(void);
-bool lds_load(FILE *f, unsigned int music_offset, unsigned int music_size);
-void lds_free(void);
-void lds_rewind(void);
-void lds_fade(Uint8 speed);
+int lds_update( void );
+bool lds_load( FILE *f, unsigned int music_offset, unsigned int music_size );
+void lds_free( void );
+void lds_rewind( void );
+
+#define REFRESH 70.0f
 
 /*unsigned int getorders() { return numposi; }
 unsigned int getorder() { return posplay; }
@@ -70,3 +71,4 @@ void lds_setregs(unsigned char reg, unsigned char val);
 void lds_setregs_adv(unsigned char reg, unsigned char mask, unsigned char val);
 
 #endif /* LDS_PLAY_H */
+

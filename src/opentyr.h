@@ -1,6 +1,6 @@
-/*
+/* 
  * OpenTyrian: A modern cross-platform port of Tyrian
- * Copyright (C) The OpenTyrian Development Team
+ * Copyright (C) 2007-2009  The OpenTyrian Development Team
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -56,6 +56,7 @@ typedef float  JE_real;
 extern const char *opentyrian_str;
 extern const char *opentyrian_version;
 
-void setupMenu(void);
+void opentyrian_menu( void );
 
 #endif /* OPENTYR_H */
+

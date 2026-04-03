@@ -1,6 +1,6 @@
 /* 
  * OpenTyrian: A modern cross-platform port of Tyrian
- * Copyright (C) The OpenTyrian Development Team
+ * Copyright (C) 2007-2009  The OpenTyrian Development Team
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -26,15 +26,17 @@ JE_LvlPosType lvlPos;
 char levelFile[13]; /* string [12] */
 JE_word lvlNum;
 
-void JE_analyzeLevel(void)
+void JE_analyzeLevel( void )
 {
 	FILE *f = dir_fopen_die(data_dir(), levelFile, "rb");
 	
-	fread_u16_die(&lvlNum, 1, f);
-
-	fread_s32_die(lvlPos, lvlNum, f);
+	efread(&lvlNum, sizeof(JE_word), 1, f);
+	
+	for (int x = 0; x < lvlNum; x++)
+		efread(&lvlPos[x], sizeof(JE_longint), 1, f);
 	
 	lvlPos[lvlNum] = ftell_eof(f);
 	
 	fclose(f);
 }
+

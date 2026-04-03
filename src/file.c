@@ -1,6 +1,6 @@
-/*
+/* 
  * OpenTyrian: A modern cross-platform port of Tyrian
- * Copyright (C) The OpenTyrian Development Team
+ * Copyright (C) 2007-2009  The OpenTyrian Development Team
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -25,77 +25,86 @@
 
 #include <errno.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 
 const char *custom_data_dir = NULL;
 
 // finds the Tyrian data directory
-const char *data_dir(void)
+/*
+const char *data_dir( void )
 {
-	const char *const dirs[] =
+	const char *dirs[] =
 	{
 		custom_data_dir,
 		TYRIAN_DIR,
 		"data",
 		".",
 	};
-
+	
 	static const char *dir = NULL;
-
+	
 	if (dir != NULL)
 		return dir;
-
+	
 	for (uint i = 0; i < COUNTOF(dirs); ++i)
 	{
 		if (dirs[i] == NULL)
 			continue;
-
+		
 		FILE *f = dir_fopen(dirs[i], "tyrian1.lvl", "rb");
 		if (f)
 		{
 			fclose(f);
-
+			
 			dir = dirs[i];
 			break;
 		}
 	}
-
+	
 	if (dir == NULL) // data not found
 		dir = "";
-
+	
 	return dir;
+}*/
+
+const char *data_dir( void )
+{
+    // Forzamos la ruta absoluta de la PS3. 
+    // Esto anula el bucle de búsqueda que no funciona en el emulador.
+    static const char *ps3_data_path = "/dev_hdd0/game/TYRIAN001/USRDIR";
+    
+    return ps3_data_path;
 }
 
 // prepend directory and fopen
-FILE *dir_fopen(const char *dir, const char *file, const char *mode)
+FILE *dir_fopen( const char *dir, const char *file, const char *mode )
 {
 	char *path = malloc(strlen(dir) + 1 + strlen(file) + 1);
 	sprintf(path, "%s/%s", dir, file);
-
+	
 	FILE *f = fopen(path, mode);
-
+	
 	free(path);
-
+	
 	return f;
 }
 
 // warn when dir_fopen fails
-FILE *dir_fopen_warn(const char *dir, const char *file, const char *mode)
+FILE *dir_fopen_warn(  const char *dir, const char *file, const char *mode )
 {
 	FILE *f = dir_fopen(dir, file, mode);
-
+	
 	if (f == NULL)
 		fprintf(stderr, "warning: failed to open '%s': %s\n", file, strerror(errno));
-
+	
 	return f;
 }
 
 // die when dir_fopen fails
-FILE *dir_fopen_die(const char *dir, const char *file, const char *mode)
+FILE *dir_fopen_die( const char *dir, const char *file, const char *mode )
 {
 	FILE *f = dir_fopen(dir, file, mode);
-
+	
 	if (f == NULL)
 	{
 		fprintf(stderr, "error: failed to open '%s': %s\n", file, strerror(errno));
@@ -103,12 +112,12 @@ FILE *dir_fopen_die(const char *dir, const char *file, const char *mode)
 		                "       Please read the README file.\n");
 		JE_tyrianHalt(1);
 	}
-
+	
 	return f;
 }
 
 // check if file can be opened for reading
-bool dir_file_exists(const char *dir, const char *file)
+bool dir_file_exists( const char *dir, const char *file )
 {
 	FILE *f = dir_fopen(dir, file, "rb");
 	if (f != NULL)
@@ -117,36 +126,93 @@ bool dir_file_exists(const char *dir, const char *file)
 }
 
 // returns end-of-file position
-long ftell_eof(FILE *f)
+long ftell_eof( FILE *f )
 {
 	long pos = ftell(f);
-
+	
 	fseek(f, 0, SEEK_END);
 	long size = ftell(f);
-
+	
 	fseek(f, pos, SEEK_SET);
-
+	
 	return size;
 }
 
-void fread_die(void *buffer, size_t size, size_t count, FILE *stream)
+// endian-swapping fread that dies if the expected amount cannot be read
+size_t efread( void *buffer, size_t size, size_t num, FILE *stream )
 {
-	size_t result = fread(buffer, size, count, stream);
-	if (result != count)
+	size_t num_read = fread(buffer, size, num, stream);
+	
+#if SDL_BYTEORDER == SDL_BIG_ENDIAN
+	switch (size)
+	{
+		case 2:
+			for (size_t i = 0; i < num; i++)
+				((Uint16 *)buffer)[i] = SDL_Swap16(((Uint16 *)buffer)[i]);
+			break;
+		case 4:
+			for (size_t i = 0; i < num; i++)
+				((Uint32 *)buffer)[i] = SDL_Swap32(((Uint32 *)buffer)[i]);
+			break;
+		case 8:
+			for (size_t i = 0; i < num; i++)
+				((Uint64 *)buffer)[i] = SDL_Swap64(((Uint64 *)buffer)[i]);
+			break;
+		default:
+			break;
+	}
+#endif
+	
+	if (num_read != num)
 	{
 		fprintf(stderr, "error: An unexpected problem occurred while reading from a file.\n");
-		SDL_Quit();
-		exit(EXIT_FAILURE);
+		JE_tyrianHalt(1);
 	}
+
+	return num_read;
 }
 
-void fwrite_die(const void *buffer, size_t size, size_t count, FILE *stream)
+// endian-swapping fwrite that dies if the expected amount cannot be written
+size_t efwrite( const void *buffer, size_t size, size_t num, FILE *stream )
 {
-	size_t result = fwrite(buffer, size, count, stream);
-	if (result != count)
+	void *swap_buffer = NULL;
+	
+#if SDL_BYTEORDER == SDL_BIG_ENDIAN
+	switch (size)
+	{
+		case 2:
+			swap_buffer = malloc(size * num);
+			for (size_t i = 0; i < num; i++)
+				((Uint16 *)swap_buffer)[i] = SDL_SwapLE16(((Uint16 *)buffer)[i]);
+			buffer = swap_buffer;
+			break;
+		case 4:
+			swap_buffer = malloc(size * num);
+			for (size_t i = 0; i < num; i++)
+				((Uint32 *)swap_buffer)[i] = SDL_SwapLE32(((Uint32 *)buffer)[i]);
+			buffer = swap_buffer;
+			break;
+		case 8:
+			swap_buffer = malloc(size * num);
+			for (size_t i = 0; i < num; i++)
+				((Uint64 *)swap_buffer)[i] = SDL_SwapLE64(((Uint64 *)buffer)[i]);
+			buffer = swap_buffer;
+			break;
+		default:
+			break;
+	}
+#endif
+	
+	size_t num_written = fwrite(buffer, size, num, stream);
+	
+	if (swap_buffer != NULL)
+		free(swap_buffer);
+	
+	if (num_written != num)
 	{
 		fprintf(stderr, "error: An unexpected problem occurred while writing to a file.\n");
-		SDL_Quit();
-		exit(EXIT_FAILURE);
+		JE_tyrianHalt(1);
 	}
+	
+	return num_written;
 }

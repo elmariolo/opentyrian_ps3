@@ -1,6 +1,6 @@
 /*
  * OpenTyrian: A modern cross-platform port of Tyrian
- * Copyright (C) The OpenTyrian Development Team
+ * Copyright (C) 2007-2009  The OpenTyrian Development Team
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -24,7 +24,7 @@
 #include "joystick.h"
 #include "keyboard.h"
 #include "mainint.h"
-#include "nortsong.h"
+#include "nortvars.h"
 #include "opentyr.h"
 #include "picload.h"
 #include "sprite.h"
@@ -41,13 +41,13 @@
  * Hopefully it'll be rewritten some day.
  */
 
-#define NET_VERSION       2            // increment whenever networking changes might create incompatibility
+#define NET_VERSION       2            // increment whenever networking changes might create incompatability
 #define NET_PORT          1333         // UDP
 
 #define NET_PACKET_SIZE   256
 #define NET_PACKET_QUEUE  16
 
-#define NET_RETRY         640          // ticks to wait for packet acknowledgment before resending
+#define NET_RETRY         640          // ticks to wait for packet acknowledgement before resending
 #define NET_RESEND        320          // ticks to wait before requesting unreceived game packet
 #define NET_KEEP_ALIVE    1600         // ticks to wait between keep-alive packets
 #define NET_TIME_OUT      16000        // ticks to wait before considering connection dead
@@ -99,7 +99,7 @@ JE_boolean pauseRequest, skipLevelRequest, helpRequest, nortShipRequest;
 JE_boolean yourInGameMenuRequest, inGameMenuRequest;
 
 #ifdef WITH_NETWORK
-static void packet_copy(UDPpacket *dst, UDPpacket *src)
+static void packet_copy( UDPpacket *dst, UDPpacket *src )
 {
 	void *temp = dst->data;
 	memcpy(dst, src, sizeof(*dst));
@@ -107,7 +107,7 @@ static void packet_copy(UDPpacket *dst, UDPpacket *src)
 	memcpy(dst->data, src->data, src->len);
 }
 
-static void packets_shift_up(UDPpacket **packet, int max_packets)
+static void packets_shift_up( UDPpacket **packet, int max_packets )
 {
 		if (packet[0])
 		{
@@ -120,7 +120,7 @@ static void packets_shift_up(UDPpacket **packet, int max_packets)
 		packet[max_packets - 1] = NULL;
 }
 
-static void packets_shift_down(UDPpacket **packet, int max_packets)
+static void packets_shift_down( UDPpacket **packet, int max_packets )
 {
 	if (packet[max_packets - 1])
 	{
@@ -134,20 +134,21 @@ static void packets_shift_down(UDPpacket **packet, int max_packets)
 }
 
 // prepare new packet for sending
-void network_prepare(Uint16 type)
+void network_prepare( Uint16 type )
 {
 	SDLNet_Write16(type,          &packet_out_temp->data[0]);
 	SDLNet_Write16(last_out_sync, &packet_out_temp->data[2]);
 }
 
-// send packet but don't expect acknowledgment of delivery
-static bool network_send_no_ack(int len)
+// send packet but don't expect acknoledgment of delivery
+static bool network_send_no_ack( int len )
 {
 	packet_out_temp->len = len;
 
 	if (!SDLNet_UDP_Send(socket, 0, packet_out_temp))
 	{
 		printf("SDLNet_UDP_Send: %s\n", SDL_GetError());
+		fflush(stdout);
 		return false;
 	}
 
@@ -155,7 +156,7 @@ static bool network_send_no_ack(int len)
 }
 
 // send packet and place it in queue to be acknowledged
-bool network_send(int len)
+bool network_send( int len )
 {
 	bool temp = network_send_no_ack(len);
 
@@ -164,9 +165,7 @@ bool network_send(int len)
 	{
 		packet_out[i] = SDLNet_AllocPacket(NET_PACKET_SIZE);
 		packet_copy(packet_out[i], packet_out_temp);
-	}
-	else
-	{
+	} else {
 		// connection is probably bad now
 		fprintf(stderr, "warning: outbound packet queue overflow\n");
 		return false;
@@ -180,8 +179,8 @@ bool network_send(int len)
 	return temp;
 }
 
-// send acknowledgment packet
-static int network_acknowledge(Uint16 sync)
+// send acknowledgement packet
+static int network_acknowledge( Uint16 sync )
 {
 	SDLNet_Write16(PACKET_ACKNOWLEDGE, &packet_out_temp->data[0]);
 	SDLNet_Write16(sync,               &packet_out_temp->data[2]);
@@ -191,13 +190,13 @@ static int network_acknowledge(Uint16 sync)
 }
 
 // activity lately?
-static bool network_is_alive(void)
+static bool network_is_alive( void )
 {
 	return (SDL_GetTicks() - last_in_tick < NET_TIME_OUT || SDL_GetTicks() - last_state_in_tick < NET_TIME_OUT);
 }
 
 // poll for new packets received, check that connection is alive, resend queued packets if necessary
-int network_check(void)
+int network_check( void )
 {
 	if (!net_initialized)
 		return -1;
@@ -228,6 +227,7 @@ int network_check(void)
 		if (!SDLNet_UDP_Send(socket, 0, packet_out[0]))
 		{
 			printf("SDLNet_UDP_Send: %s\n", SDL_GetError());
+			fflush(stdout);
 			return -1;
 		}
 
@@ -238,6 +238,7 @@ int network_check(void)
 	{
 		case -1:
 			printf("SDLNet_UDP_Recv: %s\n", SDL_GetError());
+			fflush(stdout);
 			return -1;
 			break;
 		case 0:
@@ -302,9 +303,7 @@ int network_check(void)
 								if (packet_in[i] == NULL)
 									packet_in[i] = SDLNet_AllocPacket(NET_PACKET_SIZE);
 								packet_copy(packet_in[i], packet_temp);
-							}
-							else
-							{
+							} else {
 								// inbound packet queue overflow/underflow
 								// under normal circumstances, this is okay
 							}
@@ -353,9 +352,7 @@ int network_check(void)
 								{
 									packet_state_in_xor[i] = SDLNet_AllocPacket(NET_PACKET_SIZE);
 									packet_copy(packet_state_in_xor[i], packet_temp);
-								}
-								else if (SDLNet_Read16(&packet_state_in_xor[i]->data[0]) != PACKET_STATE_XOR)
-								{
+								} else if (SDLNet_Read16(&packet_state_in_xor[i]->data[0]) != PACKET_STATE_XOR) {
 									for (int j = 4; j < packet_state_in_xor[i]->len; j++)
 										packet_state_in_xor[i]->data[j] ^= packet_temp->data[j];
 									SDLNet_Write16(PACKET_STATE_XOR, &packet_state_in_xor[i]->data[0]);
@@ -375,6 +372,7 @@ int network_check(void)
 									if (!SDLNet_UDP_Send(socket, 0, packet_state_out[i]))
 									{
 										printf("SDLNet_UDP_Send: %s\n", SDL_GetError());
+										fflush(stdout);
 										return -1;
 									}
 								}
@@ -397,7 +395,7 @@ int network_check(void)
 }
 
 // discard working packet, now processing next packet in queue
-bool network_update(void)
+bool network_update( void )
 {
 	if (packet_in[0])
 	{
@@ -412,20 +410,19 @@ bool network_update(void)
 }
 
 // has opponent gotten all the packets we've sent?
-bool network_is_sync(void)
+bool network_is_sync( void )
 {
 	return (queue_out_sync - last_ack_sync == 1);
 }
 
+
 // prepare new state for sending
-void network_state_prepare(void)
+void network_state_prepare( void )
 {
 	if (packet_state_out[0])
 	{
 		fprintf(stderr, "warning: state packet overwritten (previous packet remains unsent)\n");
-	}
-	else
-	{
+	} else {
 		packet_state_out[0] = SDLNet_AllocPacket(NET_PACKET_SIZE);
 		packet_state_out[0]->len = 28;
 	}
@@ -436,11 +433,12 @@ void network_state_prepare(void)
 }
 
 // send state packet, xor packet if applicable
-int network_state_send(void)
+int network_state_send( void )
 {
 	if (!SDLNet_UDP_Send(socket, 0, packet_state_out[0]))
 	{
 		printf("SDLNet_UDP_Send: %s\n", SDL_GetError());
+		fflush(stdout);
 		return -1;
 	}
 
@@ -456,6 +454,7 @@ int network_state_send(void)
 		if (!SDLNet_UDP_Send(socket, 0, packet_temp))
 		{
 			printf("SDLNet_UDP_Send: %s\n", SDL_GetError());
+			fflush(stdout);
 			return -1;
 		}
 	}
@@ -468,14 +467,12 @@ int network_state_send(void)
 }
 
 // receive state packet, wait until received
-bool network_state_update(void)
+bool network_state_update( void )
 {
 	if (network_state_is_reset())
 	{
 		return 0;
-	}
-	else
-	{
+	} else {
 		packets_shift_up(packet_state_in, NET_PACKET_QUEUE);
 
 		packets_shift_up(packet_state_in_xor, NET_PACKET_QUEUE);
@@ -534,9 +531,7 @@ bool network_state_update(void)
 				packet_state_in_xor[x] = SDLNet_AllocPacket(NET_PACKET_SIZE);
 				packet_copy(packet_state_in_xor[x], packet_state_in[0]);
 				packet_state_in_xor[x]->status = 0;
-			}
-			else
-			{
+			} else {
 				for (int j = 4; j < packet_state_in_xor[x]->len; j++)
 					packet_state_in_xor[x]->data[j] ^= packet_state_in[0]->data[j];
 			}
@@ -549,13 +544,13 @@ bool network_state_update(void)
 }
 
 // ignore first network_delay states of level
-bool network_state_is_reset(void)
+bool network_state_is_reset( void )
 {
 	return (last_state_out_sync < network_delay);
 }
 
 // reset queues for new level
-void network_state_reset(void)
+void network_state_reset( void )
 {
 	last_state_in_sync = last_state_out_sync = 0;
 
@@ -587,9 +582,10 @@ void network_state_reset(void)
 	last_state_in_tick = SDL_GetTicks();
 }
 
+
 // attempt to punch through firewall by firing off UDP packets at the opponent
 // exchange game information
-int network_connect(void)
+int network_connect( void )
 {
 	SDLNet_ResolveHost(&ip, network_opponent_host, network_opponent_port);
 
@@ -620,11 +616,10 @@ connect_reset:
 	// until opponent sends connect packet
 	while (true)
 	{
-		setFrameCount(1);
+		push_joysticks_as_keyboard();
+		service_SDL_events(false);
 
-		KeyboardInput keyboardInput;
-
-		if (keyboardGetInput(&keyboardInput) && keyboardInput.scancode == SDL_SCANCODE_ESCAPE)
+		if (newkey && lastkey_sym == SDLK_ESCAPE)
 			network_tyrian_halt(0, false);
 
 		// never timeout
@@ -634,8 +629,9 @@ connect_reset:
 			break;
 
 		network_update();
+		network_check();
 
-		waitUntilElapsed();
+		SDL_Delay(16);
 	}
 
 connect_again:
@@ -669,17 +665,19 @@ connect_again:
 	// until opponent has acknowledged
 	while (!network_is_sync())
 	{
-		setFrameCount(1);
+		service_SDL_events(false);
 
 		// got a duplicate packet; process it again (but why?)
 		if (packet_in[0] && SDLNet_Read16(&packet_in[0]->data[0]) == PACKET_CONNECT)
 			goto connect_again;
 
+		network_check();
+
 		// maybe opponent didn't get our packet
 		if (SDL_GetTicks() - last_out_tick > NET_RETRY)
 			goto connect_reset;
 
-		waitUntilElapsed();
+		SDL_Delay(16);
 	}
 
 	// send another packet since sometimes the network syncs without both connect packets exchanged
@@ -698,9 +696,9 @@ connect_again:
 }
 
 // something has gone wrong :(
-void network_tyrian_halt(unsigned int err, bool attempt_sync)
+void network_tyrian_halt( unsigned int err, bool attempt_sync )
 {
-	const char *const err_msg[] = {
+	const char *err_msg[] = {
 		"Quitting...",
 		"Other player quit the game.",
 		"Network connection was lost.",
@@ -729,14 +727,18 @@ void network_tyrian_halt(unsigned int err, bool attempt_sync)
 	{
 		while (!network_is_sync() && network_is_alive())
 		{
-			setFrameCount(1);
+			service_SDL_events(false);
 
-			waitUntilElapsed();
+			network_check();
+			SDL_Delay(16);
 		}
 	}
 
 	if (err)
-		waitUntilGetInput();
+	{
+		while (!JE_anyButton())
+			SDL_Delay(16);
+	}
 
 	fade_black(10);
 
@@ -745,10 +747,11 @@ void network_tyrian_halt(unsigned int err, bool attempt_sync)
 	JE_tyrianHalt(5);
 }
 
-int network_init(void)
+int network_init( void )
 {
 	printf("Initializing network...\n");
-
+	fflush(stdout);
+	
 	if (network_delay * 2 > NET_PACKET_QUEUE - 2)
 	{
 		fprintf(stderr, "error: network delay would overflow packet queue\n");
@@ -774,6 +777,7 @@ int network_init(void)
 	if (!packet_temp || !packet_out_temp)
 	{
 		printf("SDLNet_AllocPacket: %s\n", SDLNet_GetError());
+		fflush(stdout);
 		return -3;
 	}
 
@@ -784,7 +788,7 @@ int network_init(void)
 
 #endif
 
-void JE_clearSpecialRequests(void)
+void JE_clearSpecialRequests( void )
 {
 	pauseRequest = false;
 	inGameMenuRequest = false;
@@ -792,3 +796,4 @@ void JE_clearSpecialRequests(void)
 	helpRequest = false;
 	nortShipRequest = false;
 }
+

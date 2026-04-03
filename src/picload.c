@@ -1,6 +1,6 @@
 /*
  * OpenTyrian: A modern cross-platform port of Tyrian
- * Copyright (C) The OpenTyrian Development Team
+ * Copyright (C) 2007-2009  The OpenTyrian Development Team
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -25,9 +25,8 @@
 #include "video.h"
 
 #include <string.h>
-#include <stdlib.h>
 
-void JE_loadPic(SDL_Surface *screen, JE_byte PCXnumber, JE_boolean storepal)
+void JE_loadPic(SDL_Surface *screen, JE_byte PCXnumber, JE_boolean storepal )
 {
 	PCXnumber--;
 
@@ -39,9 +38,12 @@ void JE_loadPic(SDL_Surface *screen, JE_byte PCXnumber, JE_boolean storepal)
 		first = false;
 
 		Uint16 temp;
-		fread_u16_die(&temp, 1, f);
+		efread(&temp, sizeof(Uint16), 1, f);
+		for (int i = 0; i < PCX_NUM; i++)
+		{
+			efread(&pcxpos[i], sizeof(JE_longint), 1, f);
+		}
 
-		fread_s32_die(pcxpos, PCX_NUM, f);
 		pcxpos[PCX_NUM] = ftell_eof(f);
 	}
 
@@ -49,7 +51,7 @@ void JE_loadPic(SDL_Surface *screen, JE_byte PCXnumber, JE_boolean storepal)
 	Uint8 *buffer = malloc(size);
 
 	fseek(f, pcxpos[PCXnumber], SEEK_SET);
-	fread_u8_die(buffer, size, f);
+	efread(buffer, sizeof(Uint8), size, f);
 	fclose(f);
 
 	Uint8 *p = buffer;
@@ -64,9 +66,7 @@ void JE_loadPic(SDL_Surface *screen, JE_byte PCXnumber, JE_boolean storepal)
 			i += (*p & 0x3f);
 			memset(s, *(p + 1), (*p & 0x3f));
 			s += (*p & 0x3f); p += 2;
-		}
-		else
-		{
+		} else {
 			i++;
 			*s = *p;
 			s++; p++;
@@ -84,3 +84,4 @@ void JE_loadPic(SDL_Surface *screen, JE_byte PCXnumber, JE_boolean storepal)
 	if (storepal)
 		set_palette(colors, 0, 255);
 }
+

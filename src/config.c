@@ -1,6 +1,6 @@
 /* 
  * OpenTyrian: A modern cross-platform port of Tyrian
- * Copyright (C) The OpenTyrian Development Team
+ * Copyright (C) 2007-2009  The OpenTyrian Development Team
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -22,8 +22,6 @@
 #include "file.h"
 #include "joystick.h"
 #include "loudness.h"
-#include "memreader.h"
-#include "memwriter.h"
 #include "mtrand.h"
 #include "nortsong.h"
 #include "opentyr.h"
@@ -33,51 +31,29 @@
 #include "video.h"
 #include "video_scale.h"
 
-#include <stdio.h>
+#include <sys/stat.h>
 
 #ifdef _MSC_VER
 #include <direct.h>
 #define mkdir _mkdir
 #else
-#include <sys/stat.h>
 #include <unistd.h>
 #endif
 
-#define SAVE_FILES_SIZE (109 * SAVE_FILES_NUM)
-#define SAVE_FILE_SIZE (SAVE_FILES_SIZE + 100)
-
 /* Configuration Load/Save handler */
 
-static const JE_byte cryptKey[10] = /* [1..10] */
+const JE_byte cryptKey[10] = /* [1..10] */
 {
 	15, 50, 89, 240, 147, 34, 86, 9, 32, 208
 };
 
-const KeySettings defaultKeySettings =
+const JE_KeySettingType defaultKeySettings =
 {
-	SDL_SCANCODE_UP,
-	SDL_SCANCODE_DOWN,
-	SDL_SCANCODE_LEFT,
-	SDL_SCANCODE_RIGHT,
-	SDL_SCANCODE_SPACE,
-	SDL_SCANCODE_RETURN,
-	SDL_SCANCODE_LCTRL,
-	SDL_SCANCODE_LALT,
+	SDLK_UP, SDLK_DOWN, SDLK_LEFT, SDLK_RIGHT, SDLK_SPACE, SDLK_RETURN, SDLK_LCTRL, SDLK_LALT
+/*	72, 80, 75, 77, 57, 28, 29, 56*/
 };
 
-static const char *const keySettingNames[] =
-{
-	"up",
-	"down",
-	"left",
-	"right",
-	"fire",
-	"change fire",
-	"left sidekick",
-	"right sidekick",
-};
-
-static const char defaultHighScoreNames[34][23] = /* [1..34] of string [22] */
+const char defaultHighScoreNames[34][23] = /* [1..34] of string [22] */
 {/*1P*/
 /*TYR*/   "The Prime Chair", /*13*/
           "Transon Lohk",
@@ -119,7 +95,7 @@ static const char defaultHighScoreNames[34][23] = /* [1..34] of string [22] */
           "Rennis the Rat Guard"
 };
 
-static const char defaultTeamNames[22][25] = /* [1..22] of string [24] */
+const char defaultTeamNames[22][25] = /* [1..22] of string [24] */
 {
 	"Jackrabbits",
 	"Team Tyrian",
@@ -145,7 +121,8 @@ static const char defaultTeamNames[22][25] = /* [1..22] of string [24] */
 	"Carlos' Crawlers"
 };
 
-static const JE_EditorItemAvailType initialEditorItemAvail =  // FKA initialItemAvail
+
+const JE_EditorItemAvailType initialItemAvail =
 {
 	1,1,1,0,0,1,1,0,1,1,1,1,1,0,1,0,1,1,1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0, /* Front/Rear Weapons 1-38  */
 	0,0,0,0,0,0,0,0,0,0,1,                                                           /* Fill                     */
@@ -162,6 +139,7 @@ static const JE_EditorItemAvailType initialEditorItemAvail =  // FKA initialItem
  * X div 168 = Shield (1-12)
  * X div 280 = Engine (1-06)
  */
+
 
 JE_boolean smoothies[9] = /* [1..9] */
 { 0, 0, 0, 0, 0, 0, 0, 0, 0 };
@@ -191,7 +169,7 @@ char    lastLevelName[11], levelName[11]; /* string [10] */
 JE_byte mainLevel, nextLevel, saveLevel;   /*Current Level #*/
 
 /* Keyboard Junk */
-KeySettings keySettings;
+JE_KeySettingType keySettings;
 
 /* Configuration */
 JE_shortint levelFilter, levelFilterNew, levelBrightness, levelBrightnessChg;
@@ -225,6 +203,10 @@ JE_boolean explosionTransparent,
            skyEnemyOverAll,
            background2notTransparent;
 
+JE_byte soundEffects; // dummy value for config
+JE_byte versionNum;   /* SW 1.0 and SW/Reg 1.1 = 0 or 1
+                       * EA 1.2 = 2 */
+
 JE_byte    fastPlay;
 JE_boolean pentiumMode;
 
@@ -233,33 +215,17 @@ JE_byte    gameSpeed;
 JE_byte    processorType;  /* 1=386 2=486 3=Pentium Hyper */
 
 JE_SaveFilesType saveFiles; /*array[1..saveLevelnum] of savefiletype;*/
-
-JE_EditorItemAvailType editorItemAvail;
+JE_SaveGameTemp saveTemp;
 
 JE_word editorLevel;   /*Initial value 800*/
 
 Config opentyrian_config;  // implicitly initialized
 
-// Fields of TYRIAN.CFG that are preserved for compatibility
-static Uint8 inputDevice_ = 0;  // FKA inputDevice
-static Uint8 jConfigure = 0;  // FKA NortSong.jConfigure
-static Uint8 midiPort = 0;  // FKA NortSong.midiPort
-static Uint8 soundEffects = 0;  // FKA NortSong.soundEffects
-static Uint8 versionNum;   /* SW 1.0 and SW/Reg 1.1 = 0 or 1
-                            * EA 1.2 = 2 */
-static const Uint8 defaultJoyButtonAssign[4] = { 1, 4, 5, 5 };  // FKA Joystick.defaultJoyButtonAssign
-static Uint8 joyButtonAssign[4] = { 0 };  // FKA Joystick.joyButtonAssign
-static Uint8 inputDevice1 = 0;
-static Uint8 inputDevice2 = 0;
-static const Uint8 defaultDosKeySettings[8] = { 72, 80, 75, 77, 57, 28, 29, 56 };  // FKA defaultKeySettings
-static Uint8 dosKeySettings[8] = { 0 };  // FKA keySettings
-
-bool load_opentyrian_config(void)
+bool load_opentyrian_config( void )
 {
 	// defaults
-	fullscreen_display = -1;
+	fullscreen_enabled = false;
 	set_scaler_by_name("Scale2x");
-	memcpy(keySettings, defaultKeySettings, sizeof(keySettings));
 	
 	Config *config = &opentyrian_config;
 	
@@ -279,38 +245,19 @@ bool load_opentyrian_config(void)
 	section = config_find_section(config, "video", NULL);
 	if (section != NULL)
 	{
-		config_get_int_option(section, "fullscreen", &fullscreen_display);
+		config_get_bool_option(section, "fullscreen", &fullscreen_enabled);
 		
 		const char *scaler;
 		if (config_get_string_option(section, "scaler", &scaler))
 			set_scaler_by_name(scaler);
-		
-		const char *scaling_mode;
-		if (config_get_string_option(section, "scaling_mode", &scaling_mode))
-			set_scaling_mode_by_name(scaling_mode);
 	}
-
-	section = config_find_section(config, "keyboard", NULL);
-	if (section != NULL)
-	{
-		for (size_t i = 0; i < COUNTOF(keySettings); ++i)
-		{
-			const char *keyName;
-			if (config_get_string_option(section, keySettingNames[i], &keyName))
-			{
-				SDL_Scancode scancode = SDL_GetScancodeFromName(keyName);
-				if (scancode != SDL_SCANCODE_UNKNOWN)
-					keySettings[i] = scancode;
-			}
-		}
-	}
-
+	
 	fclose(file);
 	
 	return true;
 }
 
-bool save_opentyrian_config(void)
+bool save_opentyrian_config( void )
 {
 	Config *config = &opentyrian_config;
 	
@@ -320,24 +267,10 @@ bool save_opentyrian_config(void)
 	if (section == NULL)
 		exit(EXIT_FAILURE);  // out of memory
 	
-	config_set_int_option(section, "fullscreen", fullscreen_display);
-	
+	config_set_bool_option(section, "fullscreen", fullscreen_enabled, NO_YES);
+
 	config_set_string_option(section, "scaler", scalers[scaler].name);
 	
-	config_set_string_option(section, "scaling_mode", scaling_mode_names[scaling_mode]);
-
-	section = config_find_or_add_section(config, "keyboard", NULL);
-	if (section == NULL)
-		exit(EXIT_FAILURE);  // out of memory
-
-	for (size_t i = 0; i < COUNTOF(keySettings); ++i)
-	{
-		const char *keyName = SDL_GetScancodeName(keySettings[i]);
-		if (keyName[0] == '\0')
-			keyName = NULL;
-		config_set_string_option(section, keySettingNames[i], keyName);
-	}
-
 #ifndef TARGET_WIN32
 	mkdir(get_user_directory(), 0700);
 #else
@@ -350,7 +283,7 @@ bool save_opentyrian_config(void)
 	
 	config_write(config, file);
 	
-#if _POSIX_C_SOURCE >= 1 || _XOPEN_SOURCE || _POSIX_SOURCE
+#ifndef TARGET_WIN32
 	fsync(fileno(file));
 #endif
 	fclose(file);
@@ -358,7 +291,7 @@ bool save_opentyrian_config(void)
 	return true;
 }
 
-static void playeritems_to_pitems(JE_PItemsType pItems, PlayerItems *items, JE_byte initial_episode_num)
+static void playeritems_to_pitems( JE_PItemsType pItems, PlayerItems *items, JE_byte initial_episode_num )
 {
 	pItems[0]  = items->weapon[FRONT_WEAPON].id;
 	pItems[1]  = items->weapon[REAR_WEAPON].id;
@@ -374,7 +307,7 @@ static void playeritems_to_pitems(JE_PItemsType pItems, PlayerItems *items, JE_b
 	pItems[11] = items->ship;
 }
 
-static void pitems_to_playeritems(PlayerItems *items, JE_PItemsType pItems, JE_byte *initial_episode_num)
+static void pitems_to_playeritems( PlayerItems *items, JE_PItemsType pItems, JE_byte *initial_episode_num )
 {
 	items->weapon[FRONT_WEAPON].id  = pItems[0];
 	items->weapon[REAR_WEAPON].id   = pItems[1];
@@ -391,7 +324,7 @@ static void pitems_to_playeritems(PlayerItems *items, JE_PItemsType pItems, JE_b
 	items->ship                     = pItems[11];
 }
 
-void JE_saveGame(JE_byte slot, const char *name)
+void JE_saveGame( JE_byte slot, const char *name )
 {
 	saveFiles[slot-1].initialDifficulty = initialDifficulty;
 	saveFiles[slot-1].gameHasRepeated = gameHasRepeated;
@@ -444,10 +377,10 @@ void JE_saveGame(JE_byte slot, const char *name)
 		saveFiles[slot-1].power[port] = player[twoPlayerMode ? port : 0].items.weapon[port].power;
 	}
 	
-	saveSaves();
+	JE_saveConfiguration();
 }
 
-void JE_loadGame(JE_byte slot)
+void JE_loadGame( JE_byte slot )
 {
 	superTyrian = false;
 	onePlayerAction = false;
@@ -513,9 +446,11 @@ void JE_loadGame(JE_byte slot)
 	if (strcmp(levelName, "Completed") == 0)
 	{
 		if (episode == EPISODE_AVAILABLE)
+		{
 			episode = 1;
-		else if (episode < EPISODE_AVAILABLE)
+		} else if (episode < EPISODE_AVAILABLE) {
 			episode++;
+		}
 		/* Increment episode.  Episode EPISODE_AVAILABLE goes to 1. */
 	}
 
@@ -524,7 +459,7 @@ void JE_loadGame(JE_byte slot)
 	memcpy(&lastLevelName, &levelName, sizeof(levelName));
 }
 
-void JE_initProcessorType(void)
+void JE_initProcessorType( void )
 {
 	/* SYN: Originally this proc looked at your hardware specs and chose appropriate options. We don't care, so I'll just set
 	   decent defaults here. */
@@ -584,22 +519,18 @@ void JE_initProcessorType(void)
 
 }
 
-void JE_setNewGameSpeed(void)
+void JE_setNewGameSpeed( void )
 {
 	pentiumMode = false;
 
-	Uint16 speed;
 	switch (fastPlay)
 	{
-	default:
-		assert(false);
-		// fall through
-	case 0:  // Normal
+	case 0:
 		speed = 0x4300;
 		smoothScroll = true;
 		frameCountMax = 2;
 		break;
-	case 1:  // Pentium Hyper
+	case 1:
 		speed = 0x3000;
 		smoothScroll = true;
 		frameCountMax = 2;
@@ -609,17 +540,17 @@ void JE_setNewGameSpeed(void)
 		smoothScroll = false;
 		frameCountMax = 2;
 		break;
-	case 3:  // Slug mode
+	case 3:
 		speed = 0x5300;
 		smoothScroll = true;
 		frameCountMax = 4;
 		break;
-	case 4:  // Slower
+	case 4:
 		speed = 0x4300;
 		smoothScroll = true;
 		frameCountMax = 3;
 		break;
-	case 5:  // Slow
+	case 5:
 		speed = 0x4300;
 		smoothScroll = true;
 		frameCountMax = 2;
@@ -627,11 +558,137 @@ void JE_setNewGameSpeed(void)
 		break;
 	}
 
-	setFrameSpeed(speed);
-	setFrameCount(frameCountMax);
+  frameCount = frameCountMax;
+  JE_resetTimerInt();
+  JE_setTimerInt();
 }
 
-const char *get_user_directory(void)
+void JE_encryptSaveTemp( void )
+{
+	JE_SaveGameTemp s3;
+	JE_word x;
+	JE_byte y;
+
+	memcpy(&s3, &saveTemp, sizeof(s3));
+
+	y = 0;
+	for (x = 0; x < SAVE_FILE_SIZE; x++)
+	{
+		y += s3[x];
+	}
+	saveTemp[SAVE_FILE_SIZE] = y;
+
+	y = 0;
+	for (x = 0; x < SAVE_FILE_SIZE; x++)
+	{
+		y -= s3[x];
+	}
+	saveTemp[SAVE_FILE_SIZE+1] = y;
+
+	y = 1;
+	for (x = 0; x < SAVE_FILE_SIZE; x++)
+	{
+		y = (y * s3[x]) + 1;
+	}
+	saveTemp[SAVE_FILE_SIZE+2] = y;
+
+	y = 0;
+	for (x = 0; x < SAVE_FILE_SIZE; x++)
+	{
+		y = y ^ s3[x];
+	}
+	saveTemp[SAVE_FILE_SIZE+3] = y;
+
+	for (x = 0; x < SAVE_FILE_SIZE; x++)
+	{
+		saveTemp[x] = saveTemp[x] ^ cryptKey[(x+1) % 10];
+		if (x > 0)
+		{
+			saveTemp[x] = saveTemp[x] ^ saveTemp[x - 1];
+		}
+	}
+}
+
+void JE_decryptSaveTemp( void )
+{
+	JE_boolean correct = true;
+	JE_SaveGameTemp s2;
+	int x;
+	JE_byte y;
+
+	/* Decrypt save game file */
+	for (x = (SAVE_FILE_SIZE - 1); x >= 0; x--)
+	{
+		s2[x] = (JE_byte)saveTemp[x] ^ (JE_byte)(cryptKey[(x+1) % 10]);
+		if (x > 0)
+		{
+			s2[x] ^= (JE_byte)saveTemp[x - 1];
+		}
+
+	}
+
+	/* for (x = 0; x < SAVE_FILE_SIZE; x++) printf("%c", s2[x]); */
+
+	/* Check save file for correctitude */
+	y = 0;
+	for (x = 0; x < SAVE_FILE_SIZE; x++)
+	{
+		y += s2[x];
+	}
+	if (saveTemp[SAVE_FILE_SIZE] != y)
+	{
+		correct = false;
+		printf("Failed additive checksum: %d vs %d\n", saveTemp[SAVE_FILE_SIZE], y);
+		fflush(stdout);
+	}
+
+	y = 0;
+	for (x = 0; x < SAVE_FILE_SIZE; x++)
+	{
+		y -= s2[x];
+	}
+	if (saveTemp[SAVE_FILE_SIZE+1] != y)
+	{
+		correct = false;
+		printf("Failed subtractive checksum: %d vs %d\n", saveTemp[SAVE_FILE_SIZE+1], y);
+		fflush(stdout);
+	}
+
+	y = 1;
+	for (x = 0; x < SAVE_FILE_SIZE; x++)
+	{
+		y = (y * s2[x]) + 1;
+	}
+	if (saveTemp[SAVE_FILE_SIZE+2] != y)
+	{
+		correct = false;
+		printf("Failed multiplicative checksum: %d vs %d\n", saveTemp[SAVE_FILE_SIZE+2], y);
+		fflush(stdout);
+	}
+
+	y = 0;
+	for (x = 0; x < SAVE_FILE_SIZE; x++)
+	{
+		y = y ^ s2[x];
+	}
+	if (saveTemp[SAVE_FILE_SIZE+3] != y)
+	{
+		correct = false;
+		printf("Failed XOR'd checksum: %d vs %d\n", saveTemp[SAVE_FILE_SIZE+3], y);
+	}
+
+	/* Barf and die if save file doesn't validate */
+	if (!correct)
+	{
+		fprintf(stderr, "Error reading save file!\n");
+		exit(255);
+	}
+
+	/* Keep decrypted version plz */
+	memcpy(&saveTemp, &s2, sizeof(s2));
+}
+
+/*const char *get_user_directory( void )
 {
 	static char user_dir[500] = "";
 	
@@ -661,128 +718,309 @@ const char *get_user_directory(void)
 	}
 	
 	return user_dir;
+}*/
+
+const char *get_user_directory( void )
+{
+    static char user_dir[500] = "";
+    
+    if (strlen(user_dir) == 0)
+    {
+        // En PS3, forzamos la ruta al USRDIR del juego
+        // Cambia TYRIAN001 por el ID que uses en tu PARAM.SFO
+        strcpy(user_dir, "/dev_hdd0/game/TYRIAN001/USRDIR");
+    }
+    
+    return user_dir;
 }
 
-void loadConfiguration(void)
-{
-	bool invalid = false;
+// for compatibility
+Uint8 joyButtonAssign[4] = {1, 4, 5, 5};
+Uint8 inputDevice_ = 0, jConfigure = 0, midiPort = 1;
 
-	FILE *f = dir_fopen_warn(get_user_directory(), "tyrian.cfg", "rb");
-	if (f == NULL)
+void JE_loadConfiguration( void )
+{
+	FILE *fi;
+	int z;
+	JE_byte *p;
+	int y;
+	
+	fi = dir_fopen_warn(get_user_directory(), "tyrian.cfg", "rb");
+	if (fi && ftell_eof(fi) == 20 + sizeof(keySettings))
 	{
-		invalid = true;
+		/* SYN: I've hardcoded the sizes here because the .CFG file format is fixed
+		   anyways, so it's not like they'll change. */
+		background2 = 0;
+		efread(&background2, 1, 1, fi);
+		efread(&gameSpeed, 1, 1, fi);
+		
+		efread(&inputDevice_, 1, 1, fi);
+		efread(&jConfigure, 1, 1, fi);
+		
+		efread(&versionNum, 1, 1, fi);
+		
+		efread(&processorType, 1, 1, fi);
+		efread(&midiPort, 1, 1, fi);
+		efread(&soundEffects, 1, 1, fi);
+		efread(&gammaCorrection, 1, 1, fi);
+		efread(&difficultyLevel, 1, 1, fi);
+		
+		efread(joyButtonAssign, 1, 4, fi);
+		
+		efread(&tyrMusicVolume, 2, 1, fi);
+		efread(&fxVolume, 2, 1, fi);
+		
+		efread(inputDevice, 1, 2, fi);
+		
+		efread(keySettings, sizeof(*keySettings), COUNTOF(keySettings), fi);
+		
+		fclose(fi);
 	}
 	else
 	{
-		Uint8 data[28];
-		size_t size = fread(data, 1, sizeof(data), f);
-
-		fseek(f, 0, SEEK_END);
-		invalid |= ftell(f) != sizeof(data);
-
-		fclose(f);
-
-		MemReader reader = { data, size, false };
-
-		background2 = memReadBool(&reader);
-		gameSpeed = memReadU8(&reader);
-		inputDevice_ = memReadU8(&reader);
-		jConfigure = memReadU8(&reader);
-		versionNum = memReadU8(&reader);
-		processorType = memReadU8(&reader);
-		midiPort = memReadU8(&reader);
-		soundEffects = memReadU8(&reader);
-		gammaCorrection = memReadU8(&reader);
-		difficultyLevel = memReadS8(&reader);
-		memReadU8Array(&reader, joyButtonAssign, COUNTOF(joyButtonAssign));
-		tyrMusicVolume = memReadU16LE(&reader);
-		fxVolume = memReadU16LE(&reader);
-		inputDevice1 = memReadU8(&reader);
-		inputDevice2 = memReadU8(&reader);
-		memReadU8Array(&reader, dosKeySettings, COUNTOF(dosKeySettings));
-
-		assert(reader.size == 0 || reader.error);
-		invalid |= reader.error;
-
-		inputDevice_ = 0;
-		if (jConfigure == 0)
-			jConfigure = 1;
-		// Game resets version number; ShipEdit doesn't.
-		versionNum = 2;
-
-		if (tyrMusicVolume > 255)
-			tyrMusicVolume = 255;
-		if (fxVolume > 255)
-			fxVolume = 255;
-	}
-
-	if (invalid)
-	{
 		printf("\nInvalid or missing TYRIAN.CFG! Continuing using defaults.\n\n");
+		fflush(stdout);
 		
-		background2 = true;
-		gameSpeed = 4;
-		inputDevice_ = 0;
-		jConfigure = 0;
-		versionNum = 2;
-		processorType = 3;
-		midiPort = 1;
 		soundEffects = 1;
+		memcpy(&keySettings, &defaultKeySettings, sizeof(keySettings));
+		background2 = true;
+		tyrMusicVolume = fxVolume = 128;
 		gammaCorrection = 0;
-		difficultyLevel = 0;
-		memcpy(&joyButtonAssign, &defaultJoyButtonAssign, sizeof(joyButtonAssign));
-		tyrMusicVolume = 223;
-		fxVolume = 223;
-		inputDevice1 = 0;
-		inputDevice2 = 0;
-		memcpy(&dosKeySettings, &defaultDosKeySettings, sizeof(dosKeySettings));
+		processorType = 3;
+		gameSpeed = 4;
 	}
 	
 	load_opentyrian_config();
-
+	
+	if (tyrMusicVolume > 255)
+		tyrMusicVolume = 255;
+	if (fxVolume > 255)
+		fxVolume = 255;
+	
+	JE_calcFXVol();
+	
 	set_volume(tyrMusicVolume, fxVolume);
+	
+	fi = dir_fopen_warn(get_user_directory(), "tyrian.sav", "rb");
+	if (fi)
+	{
 
+		fseek(fi, 0, SEEK_SET);
+		efread(saveTemp, 1, sizeof(saveTemp), fi);
+		JE_decryptSaveTemp();
+
+		/* SYN: The original mostly blasted the save file into raw memory. However, our lives are not so
+		   easy, because the C struct is necessarily a different size. So instead we have to loop
+		   through each record and load fields manually. *emo tear* :'( */
+
+		p = saveTemp;
+		for (z = 0; z < SAVE_FILES_NUM; z++)
+		{
+			memcpy(&saveFiles[z].encode, p, sizeof(JE_word)); p += 2;
+			saveFiles[z].encode = SDL_SwapLE16(saveFiles[z].encode);
+			
+			memcpy(&saveFiles[z].level, p, sizeof(JE_word)); p += 2;
+			saveFiles[z].level = SDL_SwapLE16(saveFiles[z].level);
+			
+			memcpy(&saveFiles[z].items, p, sizeof(JE_PItemsType)); p += sizeof(JE_PItemsType);
+			
+			memcpy(&saveFiles[z].score, p, sizeof(JE_longint)); p += 4;
+			saveFiles[z].score = SDL_SwapLE32(saveFiles[z].score);
+			
+			memcpy(&saveFiles[z].score2, p, sizeof(JE_longint)); p += 4;
+			saveFiles[z].score2 = SDL_SwapLE32(saveFiles[z].score2);
+			
+			/* SYN: Pascal strings are prefixed by a byte holding the length! */
+			memset(&saveFiles[z].levelName, 0, sizeof(saveFiles[z].levelName));
+			memcpy(&saveFiles[z].levelName, &p[1], *p);
+			p += 10;
+			
+			/* This was a BYTE array, not a STRING, in the original. Go fig. */
+			memcpy(&saveFiles[z].name, p, 14);
+			p += 14;
+			
+			memcpy(&saveFiles[z].cubes, p, sizeof(JE_byte)); p++;
+			memcpy(&saveFiles[z].power, p, sizeof(JE_byte) * 2); p += 2;
+			memcpy(&saveFiles[z].episode, p, sizeof(JE_byte)); p++;
+			memcpy(&saveFiles[z].lastItems, p, sizeof(JE_PItemsType)); p += sizeof(JE_PItemsType);
+			memcpy(&saveFiles[z].difficulty, p, sizeof(JE_byte)); p++;
+			memcpy(&saveFiles[z].secretHint, p, sizeof(JE_byte)); p++;
+			memcpy(&saveFiles[z].input1, p, sizeof(JE_byte)); p++;
+			memcpy(&saveFiles[z].input2, p, sizeof(JE_byte)); p++;
+			
+			/* booleans were 1 byte in pascal -- working around it */
+			Uint8 temp;
+			memcpy(&temp, p, 1); p++;
+			saveFiles[z].gameHasRepeated = temp != 0;
+			
+			memcpy(&saveFiles[z].initialDifficulty, p, sizeof(JE_byte)); p++;
+			
+			memcpy(&saveFiles[z].highScore1, p, sizeof(JE_longint)); p += 4;
+			saveFiles[z].highScore1 = SDL_SwapLE32(saveFiles[z].highScore1);
+			
+			memcpy(&saveFiles[z].highScore2, p, sizeof(JE_longint)); p += 4;
+			saveFiles[z].highScore2 = SDL_SwapLE32(saveFiles[z].highScore2);
+			
+			memset(&saveFiles[z].highScoreName, 0, sizeof(saveFiles[z].highScoreName));
+			memcpy(&saveFiles[z].highScoreName, &p[1], *p);
+			p += 30;
+			
+			memcpy(&saveFiles[z].highScoreDiff, p, sizeof(JE_byte)); p++;
+		}
+
+		/* SYN: This is truncating to bytes. I have no idea what this is doing or why. */
+		/* TODO: Figure out what this is about and make sure it isn't broked. */
+		editorLevel = (saveTemp[SIZEOF_SAVEGAMETEMP - 5] << 8) | saveTemp[SIZEOF_SAVEGAMETEMP - 6];
+
+		fclose(fi);
+	} else {
+		/* We didn't have a save file! Let's make up random stuff! */
+		editorLevel = 800;
+
+		for (z = 0; z < 100; z++)
+		{
+			saveTemp[SAVE_FILES_SIZE + z] = initialItemAvail[z];
+		}
+
+		for (z = 0; z < SAVE_FILES_NUM; z++)
+		{
+			saveFiles[z].level = 0;
+
+			for (y = 0; y < 14; y++)
+			{
+				saveFiles[z].name[y] = ' ';
+			}
+			saveFiles[z].name[14] = 0;
+
+			saveFiles[z].highScore1 = ((mt_rand() % 20) + 1) * 1000;
+
+			if (z % 6 > 2)
+			{
+				saveFiles[z].highScore2 = ((mt_rand() % 20) + 1) * 1000;
+				strcpy(saveFiles[z].highScoreName, defaultTeamNames[mt_rand() % 22]);
+			} else {
+				strcpy(saveFiles[z].highScoreName, defaultHighScoreNames[mt_rand() % 34]);
+			}
+		}
+	}
+	
 	JE_initProcessorType();
 }
 
-void saveConfiguration(void)
+void JE_saveConfiguration( void )
 {
-	Uint8 data[28];
+	FILE *f;
+	JE_byte *p;
+	int z;
 
-	MemWriter writer = { data, sizeof(data), false };
-
-	memWriteBool(&writer, background2);
-	memWriteU8(&writer, gameSpeed);
-	memWriteU8(&writer, inputDevice_);
-	memWriteU8(&writer, jConfigure);
-	memWriteU8(&writer, versionNum);
-	memWriteU8(&writer, processorType);
-	memWriteU8(&writer, midiPort);
-	memWriteU8(&writer, soundEffects);
-	memWriteU8(&writer, gammaCorrection);
-	memWriteS8(&writer, difficultyLevel);
-	memWriteU8Array(&writer, joyButtonAssign, COUNTOF(joyButtonAssign));
-	memWriteU16LE(&writer, tyrMusicVolume);
-	memWriteU16LE(&writer, fxVolume);
-	memWriteU8(&writer, inputDevice1);
-	memWriteU8(&writer, inputDevice2);
-	memWriteU8Array(&writer, dosKeySettings, COUNTOF(dosKeySettings));
-
-	assert(writer.size == 0 && !writer.error);
-
+	p = saveTemp;
+	for (z = 0; z < SAVE_FILES_NUM; z++)
+	{
+		JE_SaveFileType tempSaveFile;
+		memcpy(&tempSaveFile, &saveFiles[z], sizeof(tempSaveFile));
+		
+		tempSaveFile.encode = SDL_SwapLE16(tempSaveFile.encode);
+		memcpy(p, &tempSaveFile.encode, sizeof(JE_word)); p += 2;
+		
+		tempSaveFile.level = SDL_SwapLE16(tempSaveFile.level);
+		memcpy(p, &tempSaveFile.level, sizeof(JE_word)); p += 2;
+		
+		memcpy(p, &tempSaveFile.items, sizeof(JE_PItemsType)); p += sizeof(JE_PItemsType);
+		
+		tempSaveFile.score = SDL_SwapLE32(tempSaveFile.score);
+		memcpy(p, &tempSaveFile.score, sizeof(JE_longint)); p += 4;
+		
+		tempSaveFile.score2 = SDL_SwapLE32(tempSaveFile.score2);
+		memcpy(p, &tempSaveFile.score2, sizeof(JE_longint)); p += 4;
+		
+		/* SYN: Pascal strings are prefixed by a byte holding the length! */
+		memset(p, 0, sizeof(tempSaveFile.levelName));
+		*p = strlen(tempSaveFile.levelName);
+		memcpy(&p[1], &tempSaveFile.levelName, *p);
+		p += 10;
+		
+		/* This was a BYTE array, not a STRING, in the original. Go fig. */
+		memcpy(p, &tempSaveFile.name, 14);
+		p += 14;
+		
+		memcpy(p, &tempSaveFile.cubes, sizeof(JE_byte)); p++;
+		memcpy(p, &tempSaveFile.power, sizeof(JE_byte) * 2); p += 2;
+		memcpy(p, &tempSaveFile.episode, sizeof(JE_byte)); p++;
+		memcpy(p, &tempSaveFile.lastItems, sizeof(JE_PItemsType)); p += sizeof(JE_PItemsType);
+		memcpy(p, &tempSaveFile.difficulty, sizeof(JE_byte)); p++;
+		memcpy(p, &tempSaveFile.secretHint, sizeof(JE_byte)); p++;
+		memcpy(p, &tempSaveFile.input1, sizeof(JE_byte)); p++;
+		memcpy(p, &tempSaveFile.input2, sizeof(JE_byte)); p++;
+		
+		/* booleans were 1 byte in pascal -- working around it */
+		Uint8 temp = tempSaveFile.gameHasRepeated != false;
+		memcpy(p, &temp, 1); p++;
+		
+		memcpy(p, &tempSaveFile.initialDifficulty, sizeof(JE_byte)); p++;
+		
+		tempSaveFile.highScore1 = SDL_SwapLE32(tempSaveFile.highScore1);
+		memcpy(p, &tempSaveFile.highScore1, sizeof(JE_longint)); p += 4;
+		
+		tempSaveFile.highScore2 = SDL_SwapLE32(tempSaveFile.highScore2);
+		memcpy(p, &tempSaveFile.highScore2, sizeof(JE_longint)); p += 4;
+		
+		memset(p, 0, sizeof(tempSaveFile.highScoreName));
+		*p = strlen(tempSaveFile.highScoreName);
+		memcpy(&p[1], &tempSaveFile.highScoreName, *p);
+		p += 30;
+		
+		memcpy(p, &tempSaveFile.highScoreDiff, sizeof(JE_byte)); p++;
+	}
+	
+	saveTemp[SIZEOF_SAVEGAMETEMP - 6] = editorLevel >> 8;
+	saveTemp[SIZEOF_SAVEGAMETEMP - 5] = editorLevel;
+	
+	JE_encryptSaveTemp();
+	
 #ifndef TARGET_WIN32
 	mkdir(get_user_directory(), 0700);
 #else
 	mkdir(get_user_directory());
 #endif
-
-	FILE *f = dir_fopen_warn(get_user_directory(), "tyrian.cfg", "wb");
+	
+	f = dir_fopen_warn(get_user_directory(), "tyrian.sav", "wb");
 	if (f != NULL)
 	{
-		if (fwrite(data, 1, sizeof(data), f) != sizeof(data))
-			fprintf(stderr, "warning: failed to write to 'tyrian.cfg'\n");
+		efwrite(saveTemp, 1, sizeof(saveTemp), f);
 
-#if _POSIX_C_SOURCE >= 1 || _XOPEN_SOURCE || _POSIX_SOURCE
+#ifndef TARGET_WIN32
+		fsync(fileno(f));
+#endif
+		fclose(f);
+	}
+	
+	JE_decryptSaveTemp();
+	
+	f = dir_fopen_warn(get_user_directory(), "tyrian.cfg", "wb");
+	if (f != NULL)
+	{
+		efwrite(&background2, 1, 1, f);
+		efwrite(&gameSpeed, 1, 1, f);
+		
+		efwrite(&inputDevice_, 1, 1, f);
+		efwrite(&jConfigure, 1, 1, f);
+		
+		efwrite(&versionNum, 1, 1, f);
+		efwrite(&processorType, 1, 1, f);
+		efwrite(&midiPort, 1, 1, f);
+		efwrite(&soundEffects, 1, 1, f);
+		efwrite(&gammaCorrection, 1, 1, f);
+		efwrite(&difficultyLevel, 1, 1, f);
+		efwrite(joyButtonAssign, 1, 4, f);
+		
+		efwrite(&tyrMusicVolume, 2, 1, f);
+		efwrite(&fxVolume, 2, 1, f);
+		
+		efwrite(inputDevice, 1, 2, f);
+		
+		efwrite(keySettings, sizeof(*keySettings), COUNTOF(keySettings), f);
+		
+#ifndef TARGET_WIN32
 		fsync(fileno(f));
 #endif
 		fclose(f);
@@ -791,229 +1029,3 @@ void saveConfiguration(void)
 	save_opentyrian_config();
 }
 
-static bool decryptSaveData(Uint8 *data);
-
-void loadSaves(void)
-{
-	bool invalid = false;
-
-	FILE *f = dir_fopen_warn(get_user_directory(), "tyrian.sav", "rb");
-	if (f == NULL)
-	{
-		invalid = true;
-	}
-	else
-	{
-		Uint8 data[SAVE_FILE_SIZE + 4];
-		size_t size = fread(data, 1, sizeof(data), f);
-
-		fclose(f);
-
-		invalid = !decryptSaveData(data);
-
-		MemReader reader = { data, size, false };
-
-		for (size_t i = 0; i < COUNTOF(saveFiles); ++i)
-		{
-			saveFiles[i].encode = memReadU16LE(&reader);
-			saveFiles[i].level = memReadU16LE(&reader);
-			memReadU8Array(&reader, saveFiles[i].items, COUNTOF(saveFiles[i].items));
-			saveFiles[i].score = memReadU32LE(&reader);
-			saveFiles[i].score2 = memReadU32LE(&reader);
-			Uint8 levelNameLen = memReadU8(&reader);
-			memReadCharArray(&reader, saveFiles[i].levelName, 9);
-			saveFiles[i].levelName[MIN(levelNameLen, 9)] = '\0';
-			memReadCharArray(&reader, saveFiles[i].name, 14);
-			saveFiles[i].name[14] = '\0';
-			saveFiles[i].cubes = memReadU8(&reader);
-			memReadU8Array(&reader, saveFiles[i].power, COUNTOF(saveFiles[i].power));
-			saveFiles[i].episode = memReadU8(&reader);
-			memReadU8Array(&reader, saveFiles[i].lastItems, COUNTOF(saveFiles[i].lastItems));
-			saveFiles[i].difficulty = memReadU8(&reader);
-			saveFiles[i].secretHint = memReadU8(&reader);
-			saveFiles[i].input1 = memReadU8(&reader);
-			saveFiles[i].input2 = memReadU8(&reader);
-			saveFiles[i].gameHasRepeated = memReadBool(&reader);
-			saveFiles[i].initialDifficulty = memReadU8(&reader);
-			saveFiles[i].highScore1 = memReadS32LE(&reader);
-			saveFiles[i].highScore2 = memReadS32LE(&reader);
-			Uint8 highScoreNameLen = memReadU8(&reader);
-			memReadCharArray(&reader, saveFiles[i].highScoreName, 29);
-			saveFiles[i].highScoreName[MIN(highScoreNameLen, 29)] = '\0';
-			saveFiles[i].highScoreDiff = memReadU8(&reader);
-		}
-
-		memReadU8Array(&reader, editorItemAvail, COUNTOF(editorItemAvail));
-
-		editorLevel = ((Uint16)editorItemAvail[98] << 8) | editorItemAvail[99];
-
-		assert(reader.size == 4 || reader.error);
-		invalid |= reader.error;
-	}
-
-	if (invalid)
-	{
-		memset(saveFiles, 0, sizeof(saveFiles));
-
-		for (size_t i = 0; i < SAVE_FILES_NUM; ++i)
-		{
-			saveFiles[i].level = 0;
-
-			for (size_t j = 0; j < 14; ++j)
-				saveFiles[i].name[j] = ' ';
-			saveFiles[i].name[14] = '\0';
-
-			saveFiles[i].highScore1 = ((mt_rand() % 20) + 1) * 1000;
-			if (i % 6 < 3)
-			{
-				saveFiles[i].highScore2 = 0;
-				strcpy(saveFiles[i].highScoreName, defaultHighScoreNames[mt_rand() % COUNTOF(defaultHighScoreNames)]);
-			}
-			else
-			{
-				saveFiles[i].highScore2 = ((mt_rand() % 20) + 1) * 1000;
-				strcpy(saveFiles[i].highScoreName, defaultTeamNames[mt_rand() % COUNTOF(defaultTeamNames)]);
-			}
-			saveFiles[i].highScoreDiff = 0;
-		}
-
-		memcpy(editorItemAvail, initialEditorItemAvail, sizeof(editorItemAvail));
-
-		editorLevel = 800;
-	}
-}
-
-static void encryptSaveData(Uint8 *data);
-
-void saveSaves(void)
-{
-	Uint8 data[SAVE_FILE_SIZE + 4];
-
-	MemWriter writer = { data, sizeof(data), false };
-
-	for (size_t i = 0; i < COUNTOF(saveFiles); ++i)
-	{
-		memWriteU16LE(&writer, saveFiles[i].encode);
-		memWriteU16LE(&writer, saveFiles[i].level);
-		memWriteU8Array(&writer, saveFiles[i].items, COUNTOF(saveFiles[i].items));
-		memWriteU32LE(&writer, saveFiles[i].score);
-		memWriteU32LE(&writer, saveFiles[i].score2);
-		memWriteU8(&writer, strlen(saveFiles[i].levelName));
-		memWriteCharArray(&writer, saveFiles[i].levelName, 9);
-		memWriteCharArray(&writer, saveFiles[i].name, 14);
-		memWriteU8(&writer, saveFiles[i].cubes);
-		memWriteU8Array(&writer, saveFiles[i].power, COUNTOF(saveFiles[i].power));
-		memWriteU8(&writer, saveFiles[i].episode);
-		memWriteU8Array(&writer, saveFiles[i].lastItems, COUNTOF(saveFiles[i].lastItems));
-		memWriteU8(&writer, saveFiles[i].difficulty);
-		memWriteU8(&writer, saveFiles[i].secretHint);
-		memWriteU8(&writer, saveFiles[i].input1);
-		memWriteU8(&writer, saveFiles[i].input2);
-		memWriteBool(&writer, saveFiles[i].gameHasRepeated);
-		memWriteU8(&writer, saveFiles[i].initialDifficulty);
-		memWriteS32LE(&writer, saveFiles[i].highScore1);
-		memWriteS32LE(&writer, saveFiles[i].highScore2);
-		memWriteU8(&writer, strlen(saveFiles[i].highScoreName));
-		memWriteCharArray(&writer, saveFiles[i].highScoreName, 29);
-		memWriteU8(&writer, saveFiles[i].highScoreDiff);
-	}
-
-	editorItemAvail[98] = editorLevel >> 8;
-	editorItemAvail[99] = editorLevel;
-
-	memWriteU8Array(&writer, editorItemAvail, COUNTOF(editorItemAvail));
-
-	assert(writer.size == 4 && !writer.error);
-
-	encryptSaveData(data);
-
-#ifndef TARGET_WIN32
-	mkdir(get_user_directory(), 0700);
-#else
-	mkdir(get_user_directory());
-#endif
-
-	FILE *f = dir_fopen_warn(get_user_directory(), "tyrian.sav", "wb");
-	if (f != NULL)
-	{
-		if (fwrite(data, 1, sizeof(data), f) != sizeof(data))
-			fprintf(stderr, "warning: failed to write to 'tyrian.sav'\n");
-
-#if _POSIX_C_SOURCE >= 1 || _XOPEN_SOURCE || _POSIX_SOURCE
-		fsync(fileno(f));
-#endif
-		fclose(f);
-	}
-}
-
-void encryptSaveData(Uint8 *data)
-{
-	Uint8 y;
-
-	y = 0;
-	for (size_t i = 0; i < SAVE_FILE_SIZE; ++i)
-		y += data[i];
-	data[SAVE_FILE_SIZE] = y;
-
-	y = 0;
-	for (size_t i = 0; i < SAVE_FILE_SIZE; ++i)
-		y -= data[i];
-	data[SAVE_FILE_SIZE + 1] = y;
-
-	y = 1;
-	for (size_t i = 0; i < SAVE_FILE_SIZE; ++i)
-		y = (y * data[i]) + 1;
-	data[SAVE_FILE_SIZE + 2] = y;
-
-	y = 0;
-	for (size_t i = 0; i < SAVE_FILE_SIZE; ++i)
-		y ^= data[i];
-	data[SAVE_FILE_SIZE + 3] = y;
-
-	for (size_t i = 0; i < SAVE_FILE_SIZE; ++i)
-	{
-		data[i] ^= cryptKey[(i + 1) % 10];
-		if (i > 0)
-			data[i] ^= data[i - 1];
-	}
-}
-
-bool decryptSaveData(Uint8 *data)
-{
-	for (size_t i = SAVE_FILE_SIZE - 1; ; --i)
-	{
-		data[i] ^= cryptKey[(i + 1) % 10];
-		if (i > 0)
-			data[i] ^= data[i - 1];
-		else
-			break;
-	}
-
-	Uint8 y;
-
-	y = 0;
-	for (size_t i = 0; i < SAVE_FILE_SIZE; ++i)
-		y += data[i];
-	if (data[SAVE_FILE_SIZE] != y)
-		return false;
-
-	y = 0;
-	for (size_t i = 0; i < SAVE_FILE_SIZE; ++i)
-		y -= data[i];
-	if (data[SAVE_FILE_SIZE + 1] != y)
-		return false;
-
-	y = 1;
-	for (size_t i = 0; i < SAVE_FILE_SIZE; ++i)
-		y = (y * data[i]) + 1;
-	if (data[SAVE_FILE_SIZE + 2] != y)
-		return false;
-
-	y = 0;
-	for (size_t i = 0; i < SAVE_FILE_SIZE; ++i)
-		y ^= data[i];
-	if (data[SAVE_FILE_SIZE + 3] != y)
-		return false;
-
-	return true;
-}

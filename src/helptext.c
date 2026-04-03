@@ -1,6 +1,6 @@
 /*
  * OpenTyrian: A modern cross-platform port of Tyrian
- * Copyright (C) The OpenTyrian Development Team
+ * Copyright (C) 2007-2009  The OpenTyrian Development Team
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -29,6 +29,7 @@
 #include <assert.h>
 #include <string.h>
 
+
 const JE_byte menuHelp[MENU_MAX][11] = /* [1..maxmenu, 1..11] */
 {
 	{  1, 34,  2,  3,  4,  5,                  0, 0, 0, 0, 0 },
@@ -46,6 +47,11 @@ const JE_byte menuHelp[MENU_MAX][11] = /* [1..maxmenu, 1..11] */
 	{ 31, 31, 31, 31, 32, 12,                  0, 0, 0, 0, 0 },
 	{  4, 34,  3,  5,                    0, 0, 0, 0, 0, 0, 0 }
 };
+
+JE_byte verticalHeight = 7;
+JE_byte helpBoxColor = 12;
+JE_byte helpBoxBrightness = 1;
+JE_byte helpBoxShadeType = FULL_SHADE;
 
 char helpTxt[39][231];                                                   /* [1..39] of string [230] */
 char pName[21][16];                                                      /* [1..21] of string [15] */
@@ -71,52 +77,44 @@ char destructModeName[DESTRUCT_MODES][13];                               /* [1..
 char shipInfo[HELPTEXT_SHIPINFO_COUNT][2][256];                          /* [1..13, 1..2] of string */
 char menuInt[MENU_MAX+1][11][18];                                        /* [0..14, 1..11] of string [17] */
 
-static void decrypt_string(char *s, size_t len)
+
+void decrypt_pascal_string( char *s, int len )
 {
 	static const unsigned char crypt_key[] = { 204, 129, 63, 255, 71, 19, 25, 62, 1, 99 };
 
-	if (len == 0)
-		return;
-
-	for (size_t i = len - 1; ; --i)
+	for (int i = len - 1; i >= 0; --i)
 	{
 		s[i] ^= crypt_key[i % sizeof(crypt_key)];
-		if (i == 0)
-			break;
-		s[i] ^= s[i - 1];
+		if (i > 0)
+			s[i] ^= s[i - 1];
 	}
 }
 
-void read_encrypted_pascal_string(char *s, size_t size, FILE *f)
+void read_encrypted_pascal_string( char *s, int size, FILE *f )
 {
-	Uint8 len;
-	char buffer[255];
+	int len = getc(f);
+	if (len != EOF)
+	{
+		int skip = MAX((len + 1) - size, 0);
+		assert(skip == 0);
 
-	fread_u8_die(&len, 1, f);
-	fread_die(buffer, 1, len, f);
+		len -= skip;
+		efread(s, 1, len, f);
+		if (size > 0)
+			s[len] = '\0';
+		fseek(f, skip, SEEK_CUR);
 
-	if (size == 0)
-		return;
-
-	decrypt_string(buffer, len);
-
-	assert(len < size);
-
-	len = MIN(len, size - 1);
-	memcpy(s, buffer, len);
-	s[len] = '\0';
+		decrypt_pascal_string(s, len);
+	}
 }
 
-void skip_pascal_string(FILE *f)
+void skip_pascal_string( FILE *f )
 {
-	Uint8 len;
-	char buffer[255];
-
-	fread_u8_die(&len, 1, f);
-	fread_die(buffer, 1, len, f);
+	int len = getc(f);
+	fseek(f, len, SEEK_CUR);
 }
 
-void JE_helpBox(SDL_Surface *screen,  int x, int y, const char *message, JE_byte boxWidth, JE_byte verticalHeight, JE_byte color, JE_byte brightness, JE_byte shadeType)
+void JE_helpBox( SDL_Surface *screen,  int x, int y, const char *message, unsigned int boxwidth )
 {
 	JE_byte startpos, endpos, pos;
 	JE_boolean endstring;
@@ -145,7 +143,7 @@ void JE_helpBox(SDL_Surface *screen,  int x, int y, const char *message, JE_byte
 				if (pos == strlen(message))
 				{
 					endstring = true;
-					if ((unsigned)(pos - startpos) < boxWidth)
+					if ((unsigned)(pos - startpos) < boxwidth)
 					{
 						endpos = pos + 1;
 					}
@@ -153,10 +151,10 @@ void JE_helpBox(SDL_Surface *screen,  int x, int y, const char *message, JE_byte
 
 			} while (!(message[pos-1] == ' ' || endstring));
 
-		} while (!((unsigned)(pos - startpos) > boxWidth || endstring));
+		} while (!((unsigned)(pos - startpos) > boxwidth || endstring));
 
 		SDL_strlcpy(substring, message + startpos - 1, MIN((size_t)(endpos - startpos + 1), sizeof(substring)));
-		JE_textShade(screen, x, y, substring, color, brightness, shadeType);
+		JE_textShade(screen, x, y, substring, helpBoxColor, helpBoxBrightness, helpBoxShadeType);
 
 		y += verticalHeight;
 
@@ -164,21 +162,24 @@ void JE_helpBox(SDL_Surface *screen,  int x, int y, const char *message, JE_byte
 
 	if (endpos != pos + 1)
 	{
-		JE_textShade(screen, x, y, message + endpos, color, brightness, shadeType);
+		JE_textShade(screen, x, y, message + endpos, helpBoxColor, helpBoxBrightness, helpBoxShadeType);
 	}
+
+	helpBoxColor = 12;
+	helpBoxShadeType = FULL_SHADE;
 }
 
-void JE_HBox(SDL_Surface *screen, int x, int y, JE_byte messageNum, JE_byte boxWidth, JE_byte verticalHeight, JE_byte color, JE_byte brightness)
+void JE_HBox( SDL_Surface *screen, int x, int y, unsigned int  messagenum, unsigned int boxwidth )
 {
-	JE_helpBox(screen, x, y, helpTxt[messageNum-1], boxWidth, verticalHeight, color, brightness, FULL_SHADE);
+	JE_helpBox(screen, x, y, helpTxt[messagenum-1], boxwidth);
 }
 
-void JE_loadHelpText(void)
+void JE_loadHelpText( void )
 {
 	const unsigned int menuInt_entries[MENU_MAX + 1] = { -1, 7, 9, 8, -1, -1, 11, -1, -1, -1, 6, 4, 6, 7, 5 };
 	
 	FILE *f = dir_fopen_die(data_dir(), "tyrian.hdt", "rb");
-	fread_s32_die(&episode1DataLoc, 1, f);
+	efread(&episode1DataLoc, sizeof(JE_longint), 1, f);
 
 	/*Online Help*/
 	skip_pascal_string(f);
@@ -374,11 +375,7 @@ void JE_loadHelpText(void)
 		read_encrypted_pascal_string(shipInfo[i][1], sizeof(shipInfo[i][1]), f);
 	}
 	skip_pascal_string(f);
-
-	/*Menu 12 - Network Options*/
-	skip_pascal_string(f);
-	for (unsigned int i = 0; i < menuInt_entries[14]; ++i)
-		read_encrypted_pascal_string(menuInt[14][i], sizeof(menuInt[14][i]), f);
-
+	
 	fclose(f);
 }
+

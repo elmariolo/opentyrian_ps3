@@ -1,6 +1,6 @@
 /* 
  * OpenTyrian: A modern cross-platform port of Tyrian
- * Copyright (C) The OpenTyrian Development Team
+ * Copyright (C) 2007-2009  The OpenTyrian Development Team
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -19,14 +19,13 @@
 #include "palette.h"
 
 #include "file.h"
-#include "keyboard.h"
 #include "nortsong.h"
 #include "opentyr.h"
 #include "video.h"
 
 #include <assert.h>
 
-static Uint32 rgb_to_yuv(int r, int g, int b);
+static Uint32 rgb_to_yuv( int r, int g, int b );
 
 #define PALETTE_COUNT 23
 
@@ -38,11 +37,35 @@ Uint32 rgb_palette[256], yuv_palette[256];
 
 Palette colors;
 
-void JE_loadPals(void)
+void JE_loadPals( void )
 {
-	FILE *f = dir_fopen_die(data_dir(), "palette.dat", "rb");
+	const char *path = data_dir();
+    printf("PS3_DEBUG: Intentando abrir paletas en: %s/palette.dat\n", path);
+	fflush(stdout);
 	
-	palette_count = ftell_eof(f) / (256 * 3);
+	FILE *f = dir_fopen_die(path, "palette.dat", "rb");
+    
+    if (f == NULL) {
+        printf("PS3_ERROR: No se pudo abrir palette.dat (f es NULL)\n");
+		fflush(stdout);
+        return; 
+    }
+
+    fseek(f, 0, SEEK_END);
+    long size = ftell(f);
+    rewind(f);
+
+    printf("PS3_DEBUG: Tamaño detectado de palette.dat: %ld bytes\n", size);
+	fflush(stdout);
+	
+    palette_count = size / (256 * 3);
+    
+    if (palette_count != PALETTE_COUNT) {
+        printf("PS3_ERROR: El tamaño no coincide. Esperado: %d paletas (%d bytes). Encontrado: %d paletas.\n", 
+                PALETTE_COUNT, PALETTE_COUNT * 256 * 3, palette_count);
+		fflush(stdout);
+    }
+
 	assert(palette_count == PALETTE_COUNT);
 	
 	for (int p = 0; p < palette_count; ++p)
@@ -55,38 +78,59 @@ void JE_loadPals(void)
 			// bits of the original value instead. This ensures that the value goes to 255 as the original goes
 			// to 63.
 
-			Uint8 rgb[3];
-			fread_u8_die(rgb, 3, f);
-			palettes[p][i].r = (rgb[0] << 2) | (rgb[0] >> 4);
-			palettes[p][i].g = (rgb[1] << 2) | (rgb[1] >> 4);
-			palettes[p][i].b = (rgb[2] << 2) | (rgb[2] >> 4);
+			int c = getc(f);
+			palettes[p][i].r = (c << 2) | (c >> 4);
+			c = getc(f);
+			palettes[p][i].g = (c << 2) | (c >> 4);
+			c = getc(f);
+			palettes[p][i].b = (c << 2) | (c >> 4);
 		}
 	}
 	
 	fclose(f);
 }
 
-void set_palette(Palette colors, unsigned int first_color, unsigned int last_color)
+void set_palette( Palette colors, unsigned int first_color, unsigned int last_color )
 {
+	SDL_Surface *const surface = SDL_GetVideoSurface();
+	const uint bpp = surface->format->BitsPerPixel;
+	
 	for (uint i = first_color; i <= last_color; ++i)
 	{
 		palette[i] = colors[i];
-		rgb_palette[i] = SDL_MapRGB(main_window_tex_format, palette[i].r, palette[i].g, palette[i].b);
-		yuv_palette[i] = rgb_to_yuv(palette[i].r, palette[i].g, palette[i].b);
+		
+		if (bpp != 8)
+		{
+			rgb_palette[i] = SDL_MapRGB(surface->format, palette[i].r, palette[i].g, palette[i].b);
+			yuv_palette[i] = rgb_to_yuv(palette[i].r, palette[i].g, palette[i].b);
+		}
 	}
+	
+	if (bpp == 8)
+		SDL_SetColors(surface, palette, first_color, last_color - first_color + 1);
 }
 
-void set_colors(SDL_Color color, unsigned int first_color, unsigned int last_color)
+void set_colors( SDL_Color color, unsigned int first_color, unsigned int last_color )
 {
+	SDL_Surface *const surface = SDL_GetVideoSurface();
+	const uint bpp = surface->format->BitsPerPixel;
+	
 	for (uint i = first_color; i <= last_color; ++i)
 	{
 		palette[i] = color;
-		rgb_palette[i] = SDL_MapRGB(main_window_tex_format, palette[i].r, palette[i].g, palette[i].b);
-		yuv_palette[i] = rgb_to_yuv(palette[i].r, palette[i].g, palette[i].b);
+		
+		if (bpp != 8)
+		{
+			rgb_palette[i] = SDL_MapRGB(surface->format, palette[i].r, palette[i].g, palette[i].b);
+			yuv_palette[i] = rgb_to_yuv(palette[i].r, palette[i].g, palette[i].b);
+		}
 	}
+	
+	if (bpp == 8)
+		SDL_SetColors(surface, palette, first_color, last_color - first_color + 1);
 }
 
-void init_step_fade_palette(int diff[256][3], Palette colors, unsigned int first_color, unsigned int last_color)
+void init_step_fade_palette( int diff[256][3], Palette colors, unsigned int first_color, unsigned int last_color )
 {
 	for (unsigned int i = first_color; i <= last_color; i++)
 	{
@@ -96,7 +140,7 @@ void init_step_fade_palette(int diff[256][3], Palette colors, unsigned int first
 	}
 }
 
-void init_step_fade_solid(int diff[256][3], SDL_Color color, unsigned int first_color, unsigned int last_color)
+void init_step_fade_solid( int diff[256][3], SDL_Color color, unsigned int first_color, unsigned int last_color )
 {
 	for (unsigned int i = first_color; i <= last_color; i++)
 	{
@@ -106,13 +150,16 @@ void init_step_fade_solid(int diff[256][3], SDL_Color color, unsigned int first_
 	}
 }
 
-void step_fade_palette(int diff[256][3], int steps, unsigned int first_color, unsigned int last_color)
+void step_fade_palette( int diff[256][3], int steps, unsigned int first_color, unsigned int last_color )
 {
 	assert(steps > 0);
 	
+	SDL_Surface *const surface = SDL_GetVideoSurface();
+	const uint bpp = surface->format->BitsPerPixel;
+	
 	for (unsigned int i = first_color; i <= last_color; i++)
 	{
-		const int delta[3] = { diff[i][0] / steps, diff[i][1] / steps, diff[i][2] / steps };
+		int delta[3] = { diff[i][0] / steps, diff[i][1] / steps, diff[i][2] / steps };
 		
 		diff[i][0] -= delta[0];
 		diff[i][1] -= delta[1];
@@ -122,73 +169,81 @@ void step_fade_palette(int diff[256][3], int steps, unsigned int first_color, un
 		palette[i].g += delta[1];
 		palette[i].b += delta[2];
 		
-		rgb_palette[i] = SDL_MapRGB(main_window_tex_format, palette[i].r, palette[i].g, palette[i].b);
-		yuv_palette[i] = rgb_to_yuv(palette[i].r, palette[i].g, palette[i].b);
+		if (bpp != 8)
+		{
+			rgb_palette[i] = SDL_MapRGB(surface->format, palette[i].r, palette[i].g, palette[i].b);
+			yuv_palette[i] = rgb_to_yuv(palette[i].r, palette[i].g, palette[i].b);
+		}
 	}
+	
+	if (bpp == 8)
+		SDL_SetColors(surface, palette, 0, 256);
 }
 
-void fade_palette(Palette colors, int steps, unsigned int first_color, unsigned int last_color)
+
+void fade_palette( Palette colors, int steps, unsigned int first_color, unsigned int last_color )
 {
 	assert(steps > 0);
+	
+	SDL_Surface *const surface = SDL_GetVideoSurface();
+	const uint bpp = surface->format->BitsPerPixel;
 	
 	static int diff[256][3];
 	init_step_fade_palette(diff, colors, first_color, last_color);
 	
 	for (; steps > 0; steps--)
 	{
-		setFrameCount(1);
+		setdelay(1);
 		
 		step_fade_palette(diff, steps, first_color, last_color);
 		
-		JE_showVGA();
+		if (bpp != 8)
+			JE_showVGA();
 		
-		waitUntilElapsed();
+		wait_delay();
 	}
-
-	// Discard input during fade.
-	keyboardClearInput();
-	mouseClearInput();
 }
 
-void fade_solid(SDL_Color color, int steps, unsigned int first_color, unsigned int last_color)
+void fade_solid( SDL_Color color, int steps, unsigned int first_color, unsigned int last_color )
 {
 	assert(steps > 0);
+	
+	SDL_Surface *const surface = SDL_GetVideoSurface();
+	const uint bpp = surface->format->BitsPerPixel;
 	
 	static int diff[256][3];
 	init_step_fade_solid(diff, color, first_color, last_color);
 	
 	for (; steps > 0; steps--)
 	{
-		setFrameCount(1);
+		setdelay(1);
 		
 		step_fade_palette(diff, steps, first_color, last_color);
 		
-		JE_showVGA();
+		if (bpp != 8)
+			JE_showVGA();
 		
-		waitUntilElapsed();
+		wait_delay();
 	}
-
-	// Discard input during fade.
-	keyboardClearInput();
-	mouseClearInput();
 }
 
-void fade_black(int steps)
+void fade_black( int steps )
 {
 	SDL_Color black = { 0, 0, 0 };
 	fade_solid(black, steps, 0, 255);
 }
 
-void fade_white(int steps)
+void fade_white( int steps )
 {
 	SDL_Color white = { 255, 255, 255 };
 	fade_solid(white, steps, 0, 255);
 }
 
-static Uint32 rgb_to_yuv(int r, int g, int b)
+static Uint32 rgb_to_yuv( int r, int g, int b )
 {
 	int y = (r + g + b) >> 2,
 	    u = 128 + ((r - b) >> 2),
 	    v = 128 + ((-r + 2 * g - b) >> 3);
 	return (y << 16) + (u << 8) + v;
 }
+

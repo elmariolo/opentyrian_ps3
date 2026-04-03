@@ -1,6 +1,6 @@
 /* 
  * OpenTyrian: A modern cross-platform port of Tyrian
- * Copyright (C) The OpenTyrian Development Team
+ * Copyright (C) 2007-2009  The OpenTyrian Development Team
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -31,7 +31,7 @@ JE_ShipsType extraShips;
 void *extraShapes;
 JE_word extraShapeSize;
 
-void JE_decryptShips(void)
+void JE_decryptShips( void )
 {
 	JE_boolean correct = true;
 	JE_ShipsType s2;
@@ -74,7 +74,7 @@ void JE_decryptShips(void)
 	memcpy(extraShips, s2, sizeof(extraShips));
 }
 
-void JE_loadExtraShapes(void)
+void JE_loadExtraShapes( void )
 {
 	FILE *f = dir_fopen(get_user_directory(), "newsh$.shp", "rb");
 	
@@ -83,9 +83,10 @@ void JE_loadExtraShapes(void)
 		extraAvail = true;
 		extraShapeSize = ftell_eof(f) - sizeof(extraShips);
 		extraShapes = malloc(extraShapeSize);
-		fread_die(extraShapes, extraShapeSize, 1, f);
-		fread_die(extraShips, sizeof(extraShips), 1, f);
+		efread(extraShapes, extraShapeSize, 1, f);
+		efread(extraShips, sizeof(extraShips), 1, f);
 		JE_decryptShips();
 		fclose(f);
 	}
 }
+

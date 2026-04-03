@@ -1,6 +1,6 @@
 /* 
  * OpenTyrian: A modern cross-platform port of Tyrian
- * Copyright (C) The OpenTyrian Development Team
+ * Copyright (C) 2007-2009  The OpenTyrian Development Team
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -32,19 +32,20 @@ extern Uint32 rgb_palette[256], yuv_palette[256];
 
 extern Palette colors; // TODO: get rid of this
 
-void JE_loadPals(void);
+void JE_loadPals( void );
 
-void set_palette(Palette colors, unsigned int first_color, unsigned int last_color);
-void set_colors(SDL_Color color, unsigned int first_color, unsigned int last_color);
+void set_palette( Palette colors, unsigned int first_color, unsigned int last_color );
+void set_colors( SDL_Color color, unsigned int first_color, unsigned int last_color );
 
-void init_step_fade_palette(int diff[256][3], Palette colors, unsigned int first_color, unsigned int last_color);
-void init_step_fade_solid(int diff[256][3], SDL_Color color, unsigned int first_color, unsigned int last_color);
-void step_fade_palette(int diff[256][3], int steps, unsigned int first_color, unsigned int last_color);
+void init_step_fade_palette( int diff[256][3], Palette colors, unsigned int first_color, unsigned int last_color );
+void init_step_fade_solid( int diff[256][3], SDL_Color color, unsigned int first_color, unsigned int last_color );
+void step_fade_palette( int diff[256][3], int steps, unsigned int first_color, unsigned int last_color );
 
-void fade_palette(Palette colors, int steps, unsigned int first_color, unsigned int last_color);
-void fade_solid(SDL_Color color, int steps, unsigned int first_color, unsigned int last_color);
+void fade_palette( Palette colors, int steps, unsigned int first_color, unsigned int last_color );
+void fade_solid( SDL_Color color, int steps, unsigned int first_color, unsigned int last_color );
 
-void fade_black(int steps);
-void fade_white(int steps);
+void fade_black( int steps );
+void fade_white( int steps );
 
 #endif /* PALETTE_H */
+

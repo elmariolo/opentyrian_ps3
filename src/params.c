@@ -1,6 +1,6 @@
 /* 
  * OpenTyrian: A modern cross-platform port of Tyrian
- * Copyright (C) The OpenTyrian Development Team
+ * Copyright (C) 2007-2009  The OpenTyrian Development Team
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -40,7 +40,7 @@ const char pars[][9] = {
 	"LOOT", "RECORD", "NOJOY", "CONSTANT", "DEATH", "NOSOUND", "NOXMAS", "YESXMAS"
 };
 
-void JE_paramCheck(int argc, char *argv[])
+void JE_paramCheck( int argc, char *argv[] )
 {
 	const Options options[] =
 	{
@@ -99,6 +99,7 @@ void JE_paramCheck(int argc, char *argv[])
 			       "                               (1 or 2)\n"
 			       "  -p, --net-port=PORT          Local port to bind (default is 1333)\n"
 			       "  -d, --net-delay=FRAMES       Set lag-compensation delay (default is 1)\n", argv[0]);
+			fflush(stdout);
 			exit(0);
 			break;
 			
@@ -264,3 +265,4 @@ void JE_paramCheck(int argc, char *argv[])
 		}
 	}
 }
+

@@ -1,6 +1,6 @@
 /*
  * OpenTyrian: A modern cross-platform port of Tyrian
- * Copyright (C) The OpenTyrian Development Team
+ * Copyright (C) 2007-2009  The OpenTyrian Development Team
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -18,11 +18,26 @@
  */
 #include "nortvars.h"
 
+#include "file.h"
+#include "joystick.h"
+#include "keyboard.h"
 #include "opentyr.h"
 #include "vga256d.h"
 #include "video.h"
 
-void JE_dBar3(SDL_Surface *surface, JE_integer x,  JE_integer y,  JE_integer num,  JE_integer col)
+#include <assert.h>
+#include <ctype.h>
+
+JE_boolean inputDetected;
+
+JE_boolean JE_anyButton( void )
+{
+	poll_joysticks();
+	service_SDL_events(true);
+	return newkey || mousedown || joydown;
+}
+
+void JE_dBar3( SDL_Surface *surface, JE_integer x,  JE_integer y,  JE_integer num,  JE_integer col )
 {
 	JE_byte z;
 	JE_byte zWait = 2;
@@ -35,9 +50,7 @@ void JE_dBar3(SDL_Surface *surface, JE_integer x,  JE_integer y,  JE_integer num
 		if (zWait > 0)
 		{
 			zWait--;
-		}
-		else
-		{
+		} else {
 			col++;
 			zWait = 1;
 		}
@@ -45,7 +58,7 @@ void JE_dBar3(SDL_Surface *surface, JE_integer x,  JE_integer y,  JE_integer num
 	}
 }
 
-void JE_barDrawShadow(SDL_Surface *surface, JE_word x, JE_word y, JE_word res, JE_word col, JE_word amt, JE_word xsize, JE_word ysize)
+void JE_barDrawShadow( SDL_Surface *surface, JE_word x, JE_word y, JE_word res, JE_word col, JE_word amt, JE_word xsize, JE_word ysize )
 {
 	xsize--;
 	ysize--;
@@ -67,3 +80,9 @@ void JE_barDrawShadow(SDL_Surface *surface, JE_word x, JE_word y, JE_word res, J
 		fill_rectangle_xy(surface, x,y, x+xsize, y+ysize, col+(12 / res * amt));
 	}
 }
+
+void JE_wipeKey( void )
+{
+	// /!\ Doesn't seems to affect anything.
+}
+

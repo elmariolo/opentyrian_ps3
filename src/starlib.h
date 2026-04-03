@@ -1,6 +1,6 @@
 /* 
  * OpenTyrian: A modern cross-platform port of Tyrian
- * Copyright (C) The OpenTyrian Development Team
+ * Copyright (C) 2007-2009  The OpenTyrian Development Team
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -21,13 +21,12 @@
 
 #include "opentyr.h"
 
-#include "keyboard.h"
-
-bool starLibMain(KeyboardInput *out_keyboardInput);
-void JE_wackyCol(void);
-void JE_starlib_init(void);
-void JE_resetValues(void);
-void JE_changeSetup(JE_byte setupType);
-void JE_newStar(void);
+void JE_starlib_main( void );
+void JE_wackyCol( void );
+void JE_starlib_init( void );
+void JE_resetValues( void );
+void JE_changeSetup( JE_byte setupType );
+void JE_newStar( void );
 
 #endif /* STARLIB_H */
+
