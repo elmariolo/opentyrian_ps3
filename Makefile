@@ -53,4 +53,4 @@ $(TARGET).self: $(TARGET).elf
 clean:
 	rm -rf "$PKG_DIR"
 	mkdir -p "$USR_DIR"
-	rm -f $(OBJS) $(TARGET).elf $(TARGET).self
+	rm -f $(OBJS) $(TARGET).elf $(TARGET).elf.strip $(TARGET).self EBOOT.BIN opentyrian_ps3.pkg
