@@ -836,7 +836,14 @@ void JE_loadConfiguration( void )
 			p += 10;
 			
 			/* This was a BYTE array, not a STRING, in the original. Go fig. */
-			memcpy(&saveFiles[z].name, p, 14);
+			/* Copia manual byte a byte para evitar el crash por desalineación */
+			{
+				uint8_t *src = (uint8_t *)p;
+				uint8_t *dst = (uint8_t *)&saveFiles[z].name;
+				for (int i = 0; i < 14; i++) {
+					dst[i] = src[i];
+				}
+			}
 			p += 14;
 			
 			memcpy(&saveFiles[z].cubes, p, sizeof(JE_byte)); p++;

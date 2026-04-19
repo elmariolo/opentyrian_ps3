@@ -27,6 +27,41 @@
 #include <stdio.h>
 #include <string.h>
 
+#include <sys/stat.h>
+#include <unistd.h>
+
+#define MAX_TRACKED_FILES 64
+
+typedef struct {
+    int fd;
+    char name[64];
+} FD_Map;
+
+static FD_Map fd_table[MAX_TRACKED_FILES];
+static int fd_count = 0;
+
+void register_fd(FILE *f, const char *name) {
+    if (f == NULL || fd_count >= MAX_TRACKED_FILES) return;
+
+    int fd = fileno(f);
+    fd_table[fd_count].fd = fd;
+    strncpy(fd_table[fd_count].name, name, 63);
+    fd_count++;
+}
+
+// La función que me pediste: busca el nombre asociado al FD
+const char* getFilenameFromFD(FILE *stream) {
+    if (stream == NULL) return "NULL_STREAM";
+    int fd = fileno(stream);
+    
+    for (int i = 0; i < fd_count; i++) {
+        if (fd_table[i].fd = fd) {
+            return fd_table[i].name;
+        }
+    }
+    return "unknown_file";
+}
+
 const char *custom_data_dir = NULL;
 
 // finds the Tyrian data directory
@@ -79,10 +114,13 @@ const char *data_dir( void )
 // prepend directory and fopen
 FILE *dir_fopen( const char *dir, const char *file, const char *mode )
 {
+	//fprintf(stderr, "DEBUG: dir_fopen(%s)\n", file);
 	char *path = malloc(strlen(dir) + 1 + strlen(file) + 1);
 	sprintf(path, "%s/%s", dir, file);
 	
 	FILE *f = fopen(path, mode);
+	
+	register_fd(f, file);
 	
 	free(path);
 	
@@ -92,24 +130,28 @@ FILE *dir_fopen( const char *dir, const char *file, const char *mode )
 // warn when dir_fopen fails
 FILE *dir_fopen_warn(  const char *dir, const char *file, const char *mode )
 {
-	FILE *f = dir_fopen(dir, file, mode);
-	
-	if (f == NULL)
-		fprintf(stderr, "warning: failed to open '%s': %s\n", file, strerror(errno));
-	
-	return f;
+    FILE *f = dir_fopen(dir, file, mode);
+    
+    if (f == NULL) {
+        register_fd(f, file);
+        fprintf(stderr, "warning: failed to open '%s': %s\n", file, strerror(errno));
+    }
+    
+    return f;
 }
 
 // die when dir_fopen fails
 FILE *dir_fopen_die( const char *dir, const char *file, const char *mode )
 {
+	//fprintf(stderr, "DEBUG: dir_fopen_die(%s)\n", file);
 	FILE *f = dir_fopen(dir, file, mode);
 	
 	if (f == NULL)
 	{
+		register_fd(f, file);
 		fprintf(stderr, "error: failed to open '%s': %s\n", file, strerror(errno));
 		fprintf(stderr, "error: One or more of the required Tyrian " TYRIAN_VERSION " data files could not be found.\n"
-		                "       Please read the README file.\n");
+		                "        Please read the README file.\n");
 		JE_tyrianHalt(1);
 	}
 	
@@ -165,6 +207,11 @@ size_t efread( void *buffer, size_t size, size_t num, FILE *stream )
 	
 	if (num_read != num)
 	{
+		const char *fname = getFilenameFromFD(stream);
+        
+        fprintf(stderr, "error: Problem reading from file: %s\n", fname);
+        fprintf(stderr, "Expected: %zu, Read: %zu\n", num, num_read);
+		
 		fprintf(stderr, "error: An unexpected problem occurred while reading from a file.\n");
 		JE_tyrianHalt(1);
 	}
